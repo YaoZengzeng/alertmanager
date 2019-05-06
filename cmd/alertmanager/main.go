@@ -147,6 +147,7 @@ func run() int {
 	}
 
 	var peer *cluster.Peer
+	// 如果clusterBindAddr不为空，则初始化gossip mesh
 	if *clusterBindAddr != "" {
 		peer, err = cluster.Create(
 			log.With(logger, "component", "cluster"),
@@ -209,6 +210,7 @@ func run() int {
 	}
 
 	// Start providers before router potentially sends updates.
+	// 在router可能发送updates之前启动provider
 	wg.Add(1)
 	go func() {
 		silences.Maintenance(15*time.Minute, filepath.Join(*dataDir, "silences"), stopc)
