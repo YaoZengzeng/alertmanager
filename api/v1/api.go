@@ -249,6 +249,7 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 		receiverFilter *regexp.Regexp
 		// Initialize result slice to prevent api returning `null` when there
 		// are no alerts present
+		// 初始化result slice，防止api返回`null`，当没有alerts出现的时候
 		res      = []*Alert{}
 		matchers = []*labels.Matcher{}
 		ctx      = r.Context()
@@ -260,11 +261,13 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 	getBoolParam := func(name string) (bool, error) {
 		v := r.FormValue(name)
 		if v == "" {
+			// 如果没有指定，则默认为true
 			return true, nil
 		}
 		if v == "false" {
 			return false, nil
 		}
+		// 参数只能为true或者false
 		if v != "true" {
 			err := fmt.Errorf("parameter %q can either be 'true' or 'false', not %q", name, v)
 			api.respondError(w, apiError{
@@ -277,6 +280,7 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if filter := r.FormValue("filter"); filter != "" {
+		// 根据filter的值返回一系列的Matchers
 		matchers, err = parse.Matchers(filter)
 		if err != nil {
 			api.respondError(w, apiError{
@@ -336,9 +340,11 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 		routes := api.route.Match(a.Labels)
 		receivers := make([]string, 0, len(routes))
 		for _, r := range routes {
+			// 根据alert的label找到相应的routes，再根据routes找到receiver
 			receivers = append(receivers, r.RouteOpts.Receiver)
 		}
 
+		// 匹配receiver
 		if receiverFilter != nil && !receiversMatchFilter(receivers, receiverFilter) {
 			continue
 		}
@@ -348,6 +354,7 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Continue if the alert is resolved.
+		// 如果alert被resolved也不返回
 		if !a.Alert.EndsAt.IsZero() && a.Alert.EndsAt.Before(time.Now()) {
 			continue
 		}
@@ -433,23 +440,31 @@ func (api *API) insertAlerts(w http.ResponseWriter, r *http.Request, alerts ...*
 	api.mtx.RUnlock()
 
 	for _, alert := range alerts {
+		// 将UpdateAt设置为now
 		alert.UpdatedAt = now
 
 		// Ensure StartsAt is set.
+		// 确保设置了StartsAt，如果没设置EndsAt，设置为now，否则设置为EndsAt
 		if alert.StartsAt.IsZero() {
 			if alert.EndsAt.IsZero() {
+				// 如果EndsAt为0，则将StartsAt也设置为now
 				alert.StartsAt = now
 			} else {
+				// 否则将StartsAt设置为EndsAt
 				alert.StartsAt = alert.EndsAt
 			}
 		}
 		// If no end time is defined, set a timeout after which an alert
 		// is marked resolved if it is not updated.
+		// 如果没有设置end time，设置一个timeout，在这之后alert会被设置为resolved
+		// 如果它没有更新的话
 		if alert.EndsAt.IsZero() {
+			// 如果EndsAt为0，则Timeout设置为true
 			alert.Timeout = true
 			alert.EndsAt = now.Add(resolveTimeout)
 		}
 		if alert.EndsAt.After(time.Now()) {
+			// 如果EndsAt在time.Now()之后，则将alert设置为firing
 			api.numReceivedAlerts.WithLabelValues("firing").Inc()
 		} else {
 			api.numReceivedAlerts.WithLabelValues("resolved").Inc()
@@ -457,11 +472,13 @@ func (api *API) insertAlerts(w http.ResponseWriter, r *http.Request, alerts ...*
 	}
 
 	// Make a best effort to insert all alerts that are valid.
+	// 尽全力插入所有合法的alerts
 	var (
 		validAlerts    = make([]*types.Alert, 0, len(alerts))
 		validationErrs = &types.MultiError{}
 	)
 	for _, a := range alerts {
+		// 移除所有空的labels
 		removeEmptyLabels(a.Labels)
 
 		if err := a.Validate(); err != nil {
@@ -471,6 +488,7 @@ func (api *API) insertAlerts(w http.ResponseWriter, r *http.Request, alerts ...*
 		}
 		validAlerts = append(validAlerts, a)
 	}
+	// 即使是resolved alert也会被放入
 	if err := api.alerts.Put(validAlerts...); err != nil {
 		api.respondError(w, apiError{
 			typ: errorInternal,
@@ -512,6 +530,7 @@ func (api *API) setSilence(w http.ResponseWriter, r *http.Request) {
 	// because the expired silence is semantically important.
 	// But one should not be able to create expired silences, that
 	// won't have any use.
+	// 不能创建一个expired silences，因为它没有什么用
 	if sil.Expired() {
 		api.respondError(w, apiError{
 			typ: errorBadData,
@@ -528,6 +547,7 @@ func (api *API) setSilence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 将silence转换为pb格式
 	psil, err := silenceToProto(&sil)
 	if err != nil {
 		api.respondError(w, apiError{
@@ -537,6 +557,7 @@ func (api *API) setSilence(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 设置silences
 	sid, err := api.silences.Set(psil)
 	if err != nil {
 		api.respondError(w, apiError{
@@ -671,6 +692,7 @@ func matchFilterLabels(matchers []*labels.Matcher, sms map[string]string) bool {
 	for _, m := range matchers {
 		v, prs := sms[m.Name]
 		switch m.Type {
+		// 如果匹配的类型为regexp不相等或者直接不相等
 		case labels.MatchNotRegexp, labels.MatchNotEqual:
 			if string(m.Value) == "" && prs {
 				continue
@@ -808,6 +830,7 @@ func (api *API) receive(r *http.Request, v interface{}) error {
 	dec := json.NewDecoder(r.Body)
 	defer r.Body.Close()
 
+	// 从request的body中解析出Alert数组
 	err := dec.Decode(v)
 	if err != nil {
 		level.Debug(api.logger).Log("msg", "Decoding request failed", "err", err)

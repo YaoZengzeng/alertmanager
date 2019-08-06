@@ -145,11 +145,13 @@ var xxx_messageInfo_Comment proto.InternalMessageInfo
 
 // Silence specifies an object that ignores alerts based
 // on a set of matchers during a given time frame.
+// Silence指定了一个对象，它会在一个给定的时间段内忽略基于一系列matcher的alerts
 type Silence struct {
 	// A globally unique identifier.
 	Id string `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
 	// A set of matchers all of which have to be true for a silence
 	// to affect a given label set.
+	// 对于一个silence，一系列的matchers都要为true，才能影响一个给定的label set
 	Matchers []*Matcher `protobuf:"bytes,2,rep,name=matchers,proto3" json:"matchers,omitempty"`
 	// The time range during which the silence is active.
 	StartsAt time.Time `protobuf:"bytes,3,opt,name=starts_at,json=startsAt,proto3,stdtime" json:"starts_at"`
@@ -201,6 +203,8 @@ var xxx_messageInfo_Silence proto.InternalMessageInfo
 
 // MeshSilence wraps a regular silence with an expiration timestamp
 // after which the silence may be garbage collected.
+// MeshSilence封装了一个正常的silence，用一个expiration timestamp
+// 在这之后silence会被自动GC
 type MeshSilence struct {
 	Silence              *Silence  `protobuf:"bytes,1,opt,name=silence,proto3" json:"silence,omitempty"`
 	ExpiresAt            time.Time `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3,stdtime" json:"expires_at"`

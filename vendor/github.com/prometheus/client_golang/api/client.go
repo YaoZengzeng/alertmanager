@@ -55,6 +55,7 @@ func (cfg *Config) roundTripper() http.RoundTripper {
 }
 
 // Client is the interface for an API client.
+// Client是一个API client的接口
 type Client interface {
 	URL(ep string, args map[string]string) *url.URL
 	Do(context.Context, *http.Request) (*http.Response, []byte, error)

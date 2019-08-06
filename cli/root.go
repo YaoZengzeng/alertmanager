@@ -62,6 +62,7 @@ const (
 )
 
 // NewAlertmanagerClient initializes an alertmanager client with the given URL
+// NewAlertmanagerClient用给定的URL初始化一个alertmanager client
 func NewAlertmanagerClient(amURL *url.URL) *client.Alertmanager {
 	transportConfig := client.DefaultTransportConfig()
 	transportConfig.BasePath = defaultAmApiv2path

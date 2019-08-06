@@ -49,6 +49,7 @@ func utcNow() time.Time {
 	return time.Now().UTC()
 }
 
+// 和一个silence匹配的所有Matchers
 type matcherCache map[*pb.Silence]types.Matchers
 
 // Get retrieves the matchers for a given silence. If it is a missed cache
@@ -95,6 +96,7 @@ func (c matcherCache) add(s *pb.Silence) (types.Matchers, error) {
 
 // Silencer binds together a Marker and a Silences to implement the Muter
 // interface.
+// Silencer绑定一个Marker和一个Silences来实现Muter接口
 type Silencer struct {
 	silences *Silences
 	marker   types.Marker
@@ -123,9 +125,12 @@ func (s *Silencer) Mutes(lset model.LabelSet) bool {
 	if markerVersion == s.silences.Version() {
 		// No new silences added, just need to check which of the old
 		// silences are still revelant.
+		// 没有增加新的silences，只需要检查哪个old silences
 		if len(ids) == 0 {
 			// Super fast path: No silences ever applied to this
 			// alert, none have been added. We are done.
+			// 超级快的判断路径：没有silences应用到这个alert，没有新的alert添加
+			// 因此直接返回false就OK了
 			return false
 		}
 		// This is still a quite fast path: No silences have been added,
@@ -140,6 +145,7 @@ func (s *Silencer) Mutes(lset model.LabelSet) bool {
 		)
 	} else {
 		// New silences have been added, do a full query.
+		// 增加了新的silences，做一个完整的full query
 		sils, newVersion, err = s.silences.Query(
 			QState(types.SilenceStateActive),
 			QMatches(lset),
@@ -149,12 +155,15 @@ func (s *Silencer) Mutes(lset model.LabelSet) bool {
 		level.Error(s.logger).Log("msg", "Querying silences failed, alerts might not get silenced correctly", "err", err)
 	}
 	if len(sils) == 0 {
+		// 如果Query得到的silences长度为0，则调用SetSilenced并且为ids长度为0，即不设置Silenced状态
 		s.marker.SetSilenced(fp, newVersion)
 		return false
 	}
+	// ids是否发生了改变?
 	idsChanged := len(sils) != len(ids)
 	if !idsChanged {
 		// Length is the same, but is the content the same?
+		// 长度不变的话，内容是否发生了改变
 		for i, s := range sils {
 			if ids[i] != s.Id {
 				idsChanged = true
@@ -164,6 +173,7 @@ func (s *Silencer) Mutes(lset model.LabelSet) bool {
 	}
 	if idsChanged {
 		// Need to recreate ids.
+		// 如果ids发生了改变，则需要重新创建
 		ids = make([]string, len(sils))
 		for i, s := range sils {
 			ids[i] = s.Id
@@ -172,12 +182,14 @@ func (s *Silencer) Mutes(lset model.LabelSet) bool {
 	}
 	if idsChanged || newVersion != markerVersion {
 		// Update marker only if something changed.
+		// 更新marker，只有在什么东西发生了改变的时候
 		s.marker.SetSilenced(fp, newVersion, ids...)
 	}
 	return true
 }
 
 // Silences holds a silence state that can be modified, queried, and snapshot.
+// Silences维护了一个silence state，它可以被修改，查询以及snapshot
 type Silences struct {
 	logger    log.Logger
 	metrics   *metrics
@@ -186,6 +198,7 @@ type Silences struct {
 
 	mtx       sync.RWMutex
 	st        state
+	// 无论何时在silences增加的时候都会增加
 	version   int // Increments whenever silences are added.
 	broadcast func([]byte)
 	mc        matcherCache
@@ -277,14 +290,20 @@ func newMetrics(r prometheus.Registerer, s *Silences) *metrics {
 
 // Options exposes configuration options for creating a new Silences object.
 // Its zero value is a safe default.
+// Options暴露了用于创建一个新的Silences对象的配置选项
+// 它的零值是安全的默认配置
 type Options struct {
 	// A snapshot file or reader from which the initial state is loaded.
 	// None or only one of them must be set.
+	// 一个snapshot file或者reader，从中可以加载初始状态
+	// 一个都不设置或者只能设置其中一个
 	SnapshotFile   string
 	SnapshotReader io.Reader
 
 	// Retention time for newly created Silences. Silences may be
 	// garbage collected after the given duration after they ended.
+	// 对于新创建的Silences的保留时间，Silences在它们结束之后的给定时间段之后
+	// 会被垃圾回收
 	Retention time.Duration
 
 	// A logger used by background processing.
@@ -300,6 +319,7 @@ func (o *Options) validate() error {
 }
 
 // New returns a new Silences object with the given configuration.
+// New返回给定配置的一个新的Silences object
 func New(o Options) (*Silences, error) {
 	if err := o.validate(); err != nil {
 		return nil, err
@@ -337,6 +357,7 @@ func New(o Options) (*Silences, error) {
 // Maintenance garbage collects the silence state at the given interval. If the snapshot
 // file is set, a snapshot is written to it afterwards.
 // Terminates on receiving from stopc.
+// Maintenance在给定的时间间隔回收silence state，如果设定了snapshot file，在之后会写入一个snapshot
 func (s *Silences) Maintenance(interval time.Duration, snapf string, stopc <-chan struct{}) {
 	t := time.NewTicker(interval)
 	defer t.Stop()
@@ -345,6 +366,7 @@ func (s *Silences) Maintenance(interval time.Duration, snapf string, stopc <-cha
 		start := s.now()
 		var size int64
 
+		// 运行maintenance
 		level.Debug(s.logger).Log("msg", "Running maintenance")
 		defer func() {
 			level.Debug(s.logger).Log("msg", "Maintenance done", "duration", s.now().Sub(start), "size", size)
@@ -361,6 +383,7 @@ func (s *Silences) Maintenance(interval time.Duration, snapf string, stopc <-cha
 		if err != nil {
 			return err
 		}
+		// 创建snapsthot
 		if size, err = s.Snapshot(f); err != nil {
 			return err
 		}
@@ -373,12 +396,14 @@ Loop:
 		case <-stopc:
 			break Loop
 		case <-t.C:
+			// 定时进行gc以及snapshot
 			if err := f(); err != nil {
 				level.Info(s.logger).Log("msg", "Running maintenance failed", "err", err)
 			}
 		}
 	}
 	// No need for final maintenance if we don't want to snapshot.
+	// 如果我们不想要snapshot，则不需要做final maintenance
 	if snapf == "" {
 		return
 	}
@@ -389,6 +414,7 @@ Loop:
 
 // GC runs a garbage collection that removes silences that have ended longer
 // than the configured retention time ago.
+// GC运行垃圾回收，它会移除那些已经结束超过配置的retention time的silences
 func (s *Silences) GC() (int, error) {
 	start := time.Now()
 	defer func() { s.metrics.gcDuration.Observe(time.Since(start).Seconds()) }()
@@ -399,6 +425,7 @@ func (s *Silences) GC() (int, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
 
+	// 遍历所有的silence
 	for id, sil := range s.st {
 		if sil.ExpiresAt.IsZero() {
 			return n, errors.New("unexpected zero expiration timestamp")
@@ -460,6 +487,7 @@ func validateSilence(s *pb.Silence) error {
 }
 
 // cloneSilence returns a shallow copy of a silence.
+// cloneSilence返回一个silence的浅拷贝
 func cloneSilence(sil *pb.Silence) *pb.Silence {
 	s := *sil
 	return &s
@@ -499,6 +527,7 @@ func (s *Silences) setSilence(sil *pb.Silence, now time.Time) error {
 
 // Set the specified silence. If a silence with the ID already exists and the modification
 // modifies history, the old silence gets expired and a new one is created.
+// 设置特定的silence,如果一个有着这个ID的silence已经存在了，就会将老的silence设置为过期并且创建新的silence
 func (s *Silences) Set(sil *pb.Silence) (string, error) {
 	s.mtx.Lock()
 	defer s.mtx.Unlock()
@@ -521,6 +550,7 @@ func (s *Silences) Set(sil *pb.Silence) (string, error) {
 		}
 	}
 	// If we got here it's either a new silence or a replacing one.
+	// 如果我们到达这里，则这要么是一个新的silence或者是一个replacing one
 	sil.Id = uuid.NewV4().String()
 
 	if sil.StartsAt.Before(now) {
@@ -532,6 +562,8 @@ func (s *Silences) Set(sil *pb.Silence) (string, error) {
 
 // canUpdate returns true if silence a can be updated to b without
 // affecting the historic view of silencing.
+// canUpdate返回true，如果silence a可以在不影响silencing的historic view
+// 的情况下更新为b
 func canUpdate(a, b *pb.Silence, now time.Time) bool {
 	if !reflect.DeepEqual(a.Matchers, b.Matchers) {
 		return false
@@ -597,9 +629,11 @@ type query struct {
 
 // silenceFilter is a function that returns true if a silence
 // should be dropped from a result set for a given time.
+// silenceFilter是一个函数返回true，如果一个silence应该在给定时间从一个result set中被丢弃
 type silenceFilter func(*pb.Silence, *Silences, time.Time) (bool, error)
 
 // QIDs configures a query to select the given silence IDs.
+// QIDs配置一个query用于选取给定的silences IDs
 func QIDs(ids ...string) QueryParam {
 	return func(q *query) error {
 		q.ids = append(q.ids, ids...)
@@ -624,6 +658,7 @@ func QMatches(set model.LabelSet) QueryParam {
 
 // getState returns a silence's SilenceState at the given timestamp.
 func getState(sil *pb.Silence, ts time.Time) types.SilenceState {
+	// 如果时间戳在StartsAt之前，则返回types.SilenceStatePending
 	if ts.Before(sil.StartsAt) {
 		return types.SilenceStatePending
 	}
@@ -634,6 +669,7 @@ func getState(sil *pb.Silence, ts time.Time) types.SilenceState {
 }
 
 // QState filters queried silences by the given states.
+// QState根据给定的states过滤silences
 func QState(states ...types.SilenceState) QueryParam {
 	return func(q *query) error {
 		f := func(sil *pb.Silence, _ *Silences, now time.Time) (bool, error) {
@@ -666,6 +702,7 @@ func (s *Silences) QueryOne(params ...QueryParam) (*pb.Silence, error) {
 
 // Query for silences based on the given query parameters. It returns the
 // resulting silences and the state version the result is based on.
+// Query基于给定的query parameters查询silences，它返回resulting silences以及基于的state version
 func (s *Silences) Query(params ...QueryParam) ([]*pb.Silence, int, error) {
 	s.metrics.queriesTotal.Inc()
 	defer prometheus.NewTimer(s.metrics.queryDuration).ObserveDuration()
@@ -704,6 +741,7 @@ func (s *Silences) CountState(states ...types.SilenceState) (int, error) {
 func (s *Silences) query(q *query, now time.Time) ([]*pb.Silence, int, error) {
 	// If we have no ID constraint, all silences are our base set.  This and
 	// the use of post-filter functions is the trivial solution for now.
+	// 如果我们没有ID限制，所有的silences都是我们的base set
 	var res []*pb.Silence
 
 	s.mtx.Lock()
@@ -730,6 +768,7 @@ func (s *Silences) query(q *query, now time.Time) ([]*pb.Silence, int, error) {
 				return nil, s.version, err
 			}
 			if !ok {
+				// 不满足过滤条件，则remove为true
 				remove = true
 				break
 			}

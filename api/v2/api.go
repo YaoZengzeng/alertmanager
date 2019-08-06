@@ -76,6 +76,7 @@ type getAlertStatusFn func(prometheus_model.Fingerprint) types.AlertStatus
 type setAlertStatusFn func(prometheus_model.LabelSet)
 
 // NewAPI returns a new Alertmanager API v2
+// NewAPI返回一个新的Alertmanager API v2
 func NewAPI(
 	alerts provider.Alerts,
 	gf groupsFn,
@@ -129,6 +130,7 @@ func NewAPI(
 }
 
 // Update sets the API struct members that may change between reloads of alertmanager.
+// Update用于设置可能在alertmanager进行reload的时候被重新配置的API struct members
 func (api *API) Update(cfg *config.Config, setAlertStatus setAlertStatusFn) {
 	api.mtx.Lock()
 	defer api.mtx.Unlock()

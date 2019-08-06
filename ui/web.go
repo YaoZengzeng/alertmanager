@@ -27,6 +27,7 @@ import (
 )
 
 // Register registers handlers to serve files for the web interface.
+// Register注册handlers为web interface
 func Register(r *route.Router, reloadCh chan<- chan error, logger log.Logger) {
 	r.Get("/metrics", promhttp.Handler().ServeHTTP)
 
@@ -66,6 +67,7 @@ func Register(r *route.Router, reloadCh chan<- chan error, logger log.Logger) {
 		errc := make(chan error)
 		defer close(errc)
 
+		// 发送给reloadCh
 		reloadCh <- errc
 		if err := <-errc; err != nil {
 			http.Error(w, fmt.Sprintf("failed to reload config: %s", err), http.StatusInternalServerError)

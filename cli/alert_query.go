@@ -47,6 +47,7 @@ amtool alert query foo node=bar
 
 	If alertname is omitted and the first argument does not contain a '=' or a
 	'=~' then it will be assumed to be the value of the alertname pair.
+	如果alertname被忽略了并且第一个参数不包含'='或者'=~'，那么它就会被假设为alertname pair的value
 
 amtool alert query 'alertname=~foo.*'
 

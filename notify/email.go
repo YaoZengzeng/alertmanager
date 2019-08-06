@@ -39,6 +39,7 @@ import (
 )
 
 // Email implements a Notifier for email notifications.
+// Email实现了用于email通知的Notifier
 type Email struct {
 	conf   *config.EmailConfig
 	tmpl   *template.Template
@@ -46,6 +47,7 @@ type Email struct {
 }
 
 // NewEmail returns a new Email notifier.
+// NewEmail返回一个新的Email notifier
 func NewEmail(c *config.EmailConfig, t *template.Template, l log.Logger) *Email {
 	if _, ok := c.Headers["Subject"]; !ok {
 		c.Headers["Subject"] = config.DefaultEmailSubject
@@ -110,6 +112,7 @@ func (n *Email) auth(mechs string) (smtp.Auth, error) {
 }
 
 // Notify implements the Notifier interface.
+// Notify实现了Notifier接口
 func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 	// We need to know the hostname for both auth and TLS.
 	var c *smtp.Client
@@ -137,6 +140,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 		}
 	} else {
 		// Connect to the SMTP smarthost.
+		// 连接SMTP smarthost
 		c, err = smtp.Dial(n.conf.Smarthost)
 		if err != nil {
 			return true, err
@@ -188,7 +192,9 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 
 	var (
 		tmplErr error
+		// 调用template生成数据
 		data    = n.tmpl.Data(receiverName(ctx, n.logger), groupLabels(ctx, n.logger), as...)
+		// tmplText返回函数
 		tmpl    = tmplText(n.tmpl, data, &tmplErr)
 		from    = tmpl(n.conf.From)
 		to      = tmpl(n.conf.To)
@@ -202,6 +208,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 		return false, fmt.Errorf("parsing from addresses: %s", err)
 	}
 	if len(addrs) != 1 {
+		// 必须只有一个from address
 		return false, fmt.Errorf("must be exactly one from address")
 	}
 	if err := c.Mail(addrs[0].Address); err != nil {
@@ -249,6 +256,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 
 	if len(n.conf.Text) > 0 {
 		// Text template
+		// Text模板
 		w, err := multipartWriter.CreatePart(textproto.MIMEHeader{
 			"Content-Transfer-Encoding": {"quoted-printable"},
 			"Content-Type":              {"text/plain; charset=UTF-8"},
@@ -261,6 +269,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 			return false, fmt.Errorf("executing email text template: %s", err)
 		}
 		qw := quotedprintable.NewWriter(w)
+		// 将body写入
 		_, err = qw.Write([]byte(body))
 		if err != nil {
 			return true, err
@@ -273,6 +282,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 
 	if len(n.conf.HTML) > 0 {
 		// Html template
+		// 构建Html template
 		// Preferred alternative placed last per section 5.1.4 of RFC 2046
 		// https://www.ietf.org/rfc/rfc2046.txt
 		w, err := multipartWriter.CreatePart(textproto.MIMEHeader{
@@ -287,6 +297,7 @@ func (n *Email) Notify(ctx context.Context, as ...*types.Alert) (bool, error) {
 			return false, fmt.Errorf("executing email html template: %s", err)
 		}
 		qw := quotedprintable.NewWriter(w)
+		// 将body写入
 		_, err = qw.Write([]byte(body))
 		if err != nil {
 			return true, err

@@ -216,10 +216,12 @@ func resolveFilepaths(baseDir string, cfg *Config) {
 }
 
 // Config is the top-level configuration for Alertmanager's config files.
+// Config是Alertmanager配置文件的顶级配置
 type Config struct {
 	Global       *GlobalConfig  `yaml:"global,omitempty" json:"global,omitempty"`
 	Route        *Route         `yaml:"route,omitempty" json:"route,omitempty"`
 	InhibitRules []*InhibitRule `yaml:"inhibit_rules,omitempty" json:"inhibit_rules,omitempty"`
+	// 定义了一系列的Receivers
 	Receivers    []*Receiver    `yaml:"receivers,omitempty" json:"receivers,omitempty"`
 	Templates    []string       `yaml:"templates" json:"templates"`
 
@@ -450,6 +452,7 @@ func checkReceiver(r *Route, receivers map[string]struct{}) error {
 }
 
 // DefaultGlobalConfig returns GlobalConfig with default values.
+// DefaultGlobalConfig返回一个具有默认值的GlobalConfig
 func DefaultGlobalConfig() GlobalConfig {
 	return GlobalConfig{
 		ResolveTimeout: model.Duration(5 * time.Minute),
@@ -489,9 +492,11 @@ func parseURL(s string) (*URL, error) {
 
 // GlobalConfig defines configuration parameters that are valid globally
 // unless overwritten.
+// GlobalConfig定义了全局合法的配置参数，除非被覆盖
 type GlobalConfig struct {
 	// ResolveTimeout is the time after which an alert is declared resolved
 	// if it has not been updated.
+	// ResolveTimeout是经过多久以后一个alert会被标记为resolved的时间，如果它没有被更新的话
 	ResolveTimeout model.Duration `yaml:"resolve_timeout" json:"resolve_timeout"`
 
 	HTTPConfig *commoncfg.HTTPClientConfig `yaml:"http_config,omitempty" json:"http_config,omitempty"`
@@ -525,6 +530,7 @@ func (c *GlobalConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // A Route is a node that contains definitions of how to handle alerts.
+// 一个Route是一个node，包含了如何处理alerts的定义
 type Route struct {
 	Receiver string `yaml:"receiver,omitempty" json:"receiver,omitempty"`
 
@@ -561,6 +567,7 @@ func (r *Route) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		}
 	}
 	for _, l := range r.GroupByStr {
+		// 如果为...,则GroupByAll为true
 		if l == "..." {
 			r.GroupByAll = true
 		} else {
@@ -598,21 +605,26 @@ func (r *Route) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // InhibitRule defines an inhibition rule that mutes alerts that match the
 // target labels if an alert matching the source labels exists.
 // Both alerts have to have a set of labels being equal.
+// InhibitRule定义了一个抑制规则，它会抑制匹配target labels的alerts，如果匹配source labels的
+// alert已经存在的话，两个alerts都必须有一系列的labels匹配
 type InhibitRule struct {
 	// SourceMatch defines a set of labels that have to equal the given
 	// value for source alerts.
+	// SourceMatch定义了一系列的labels，它需要和source alerts匹配
 	SourceMatch map[string]string `yaml:"source_match,omitempty" json:"source_match,omitempty"`
 	// SourceMatchRE defines pairs like SourceMatch but does regular expression
 	// matching.
 	SourceMatchRE map[string]Regexp `yaml:"source_match_re,omitempty" json:"source_match_re,omitempty"`
 	// TargetMatch defines a set of labels that have to equal the given
 	// value for target alerts.
+	// TargetMatch定义了一系列的labels必须喝target alerts匹配
 	TargetMatch map[string]string `yaml:"target_match,omitempty" json:"target_match,omitempty"`
 	// TargetMatchRE defines pairs like TargetMatch but does regular expression
 	// matching.
 	TargetMatchRE map[string]Regexp `yaml:"target_match_re,omitempty" json:"target_match_re,omitempty"`
 	// A set of labels that must be equal between the source and target alert
 	// for them to be a match.
+	// 一系列的labels，如果source和target alert匹配的话，必须相等
 	Equal model.LabelNames `yaml:"equal,omitempty" json:"equal,omitempty"`
 }
 
@@ -651,8 +663,10 @@ func (r *InhibitRule) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // Receiver configuration provides configuration on how to contact a receiver.
+// Receiver配置提供了如何和一个receiver进行交互的配置
 type Receiver struct {
 	// A unique identifier for this receiver.
+	// receiver的标识符
 	Name string `yaml:"name" json:"name"`
 
 	EmailConfigs     []*EmailConfig     `yaml:"email_configs,omitempty" json:"email_configs,omitempty"`

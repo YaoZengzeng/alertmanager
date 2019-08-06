@@ -41,26 +41,33 @@ import (
 // A Notifier notifies about alerts under constraints of the given context.
 // It returns an error if unsuccessful and a flag whether the error is
 // recoverable. This information is useful for a retry logic.
+// 一个Notify在给定的context的限制下对alerts进行通知
+// 它返回一个error如果不成功的话以及一个flag表明error是否是可恢复的
+// 这在retry逻辑中是非常有用的
 type Notifier interface {
 	Notify(context.Context, ...*types.Alert) (bool, error)
 }
 
 // An Integration wraps a notifier and its config to be uniquely identified by
 // name and index from its origin in the configuration.
+// 一个Integration封装了一个notifier，它的配置唯一地由配置中原始的name以及index中识别
 type Integration struct {
 	notifier Notifier
+	// notifierConfig仅包含一个配置，即alert被resolve之后是否发送
 	conf     notifierConfig
 	name     string
 	idx      int
 }
 
 // Notify implements the Notifier interface.
+// Notify实现了Notifier接口
 func (i *Integration) Notify(ctx context.Context, alerts ...*types.Alert) (bool, error) {
 	return i.notifier.Notify(ctx, alerts...)
 }
 
 // BuildReceiverIntegrations builds a list of integration notifiers off of a
 // receivers config.
+// BuildReceiverIntegrations基于receiver config构建一系列的integration notifiers
 func BuildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, logger log.Logger) []Integration {
 	var (
 		integrations []Integration
@@ -74,6 +81,7 @@ func BuildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 		}
 	)
 
+	// 遍历各种notifier的配置进行发送
 	for i, c := range nc.WebhookConfigs {
 		n := NewWebhook(c, tmpl, logger)
 		add("webhook", i, n, c)
@@ -118,6 +126,7 @@ const contentTypeJSON = "application/json"
 var userAgentHeader = fmt.Sprintf("Alertmanager/%s", version.Version)
 
 // Webhook implements a Notifier for generic webhooks.
+// Webhook为generic webhooks实现了一个Notifier
 type Webhook struct {
 	conf   *config.WebhookConfig
 	tmpl   *template.Template
@@ -130,6 +139,7 @@ func NewWebhook(conf *config.WebhookConfig, t *template.Template, l log.Logger) 
 }
 
 // WebhookMessage defines the JSON object send to webhook endpoints.
+// WebhookMessage定义了发送给webhook endpoints的JSON object
 type WebhookMessage struct {
 	*template.Data
 
@@ -139,9 +149,12 @@ type WebhookMessage struct {
 }
 
 // Notify implements the Notifier interface.
+// Notify实现了Notifier接口
 func (w *Webhook) Notify(ctx context.Context, alerts ...*types.Alert) (bool, error) {
+	// 利用tmpl生成数据
 	data := w.tmpl.Data(receiverName(ctx, w.logger), groupLabels(ctx, w.logger), alerts...)
 
+	// 获取group key
 	groupKey, ok := GroupKey(ctx)
 	if !ok {
 		level.Error(w.logger).Log("msg", "group key missing")
@@ -165,6 +178,7 @@ func (w *Webhook) Notify(ctx context.Context, alerts ...*types.Alert) (bool, err
 	req.Header.Set("Content-Type", contentTypeJSON)
 	req.Header.Set("User-Agent", userAgentHeader)
 
+	// 构建webhook client
 	c, err := commoncfg.NewClientFromConfig(*w.conf.HTTPConfig, "webhook")
 	if err != nil {
 		return false, err
@@ -176,6 +190,7 @@ func (w *Webhook) Notify(ctx context.Context, alerts ...*types.Alert) (bool, err
 	}
 	resp.Body.Close()
 
+	// retry返回请求是否能够retry
 	return w.retry(resp.StatusCode)
 }
 
@@ -183,6 +198,7 @@ func (w *Webhook) retry(statusCode int) (bool, error) {
 	// Webhooks are assumed to respond with 2xx response codes on a successful
 	// request and 5xx response codes are assumed to be recoverable.
 	if statusCode/100 != 2 {
+		// 如果response codes为5xx则表示是可恢复的
 		return (statusCode/100 == 5), fmt.Errorf("unexpected status code %v from %s", statusCode, w.conf.URL)
 	}
 

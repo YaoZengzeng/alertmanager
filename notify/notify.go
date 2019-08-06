@@ -125,11 +125,13 @@ func WithGroupKey(ctx context.Context, s string) context.Context {
 }
 
 // WithFiringAlerts populates a context with a slice of firing alerts.
+// WithFiringAlerts用一系列的firing alerts填充context
 func WithFiringAlerts(ctx context.Context, alerts []uint64) context.Context {
 	return context.WithValue(ctx, keyFiringAlerts, alerts)
 }
 
 // WithResolvedAlerts populates a context with a slice of resolved alerts.
+// WithResolvedAlerts用一系列的resolved alerts填充context
 func WithResolvedAlerts(ctx context.Context, alerts []uint64) context.Context {
 	return context.WithValue(ctx, keyResolvedAlerts, alerts)
 }
@@ -202,6 +204,7 @@ func Now(ctx context.Context) (time.Time, bool) {
 
 // FiringAlerts extracts a slice of firing alerts from the context.
 // Iff none exists, the second argument is false.
+// FiringAlerts从context中抽取出一系列的firing alerts
 func FiringAlerts(ctx context.Context) ([]uint64, bool) {
 	v, ok := ctx.Value(keyFiringAlerts).([]uint64)
 	return v, ok
@@ -215,6 +218,7 @@ func ResolvedAlerts(ctx context.Context) ([]uint64, bool) {
 }
 
 // A Stage processes alerts under the constraints of the given context.
+// Stage处理alerts在给定的上下文的限制下
 type Stage interface {
 	Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error)
 }
@@ -228,11 +232,14 @@ func (f StageFunc) Exec(ctx context.Context, l log.Logger, alerts ...*types.Aler
 }
 
 type NotificationLog interface {
+	// 根据receiver和gkey，对firingAlerts以及resolvedAlerts进行记录
 	Log(r *nflogpb.Receiver, gkey string, firingAlerts, resolvedAlerts []uint64) error
+	// 根据Queryparam参数，返回相应的Entry
 	Query(params ...nflog.QueryParam) ([]*nflogpb.Entry, error)
 }
 
 // BuildPipeline builds a map of receivers to Stages.
+// BuildPipeline构建一系列的receivers
 func BuildPipeline(
 	confs []*config.Receiver,
 	tmpl *template.Template,
@@ -245,17 +252,21 @@ func BuildPipeline(
 ) RoutingStage {
 	rs := RoutingStage{}
 
+	// gossip settle，inhibitor和silencer是每个receiver都必须经历的阶段
 	ms := NewGossipSettleStage(peer)
 	is := NewMuteStage(inhibitor)
 	ss := NewMuteStage(silencer)
 
+	// 遍历receiver
 	for _, rc := range confs {
+		// receiver对应的stage都是并行执行的
 		rs[rc.Name] = MultiStage{ms, is, ss, createStage(rc, tmpl, wait, notificationLog, logger)}
 	}
 	return rs
 }
 
 // createStage creates a pipeline of stages for a receiver.
+// createStage为一个receiver创建一个pipeline of stages
 func createStage(rc *config.Receiver, tmpl *template.Template, wait func() time.Duration, notificationLog NotificationLog, logger log.Logger) Stage {
 	var fs FanoutStage
 	for _, i := range BuildReceiverIntegrations(rc, tmpl, logger) {
@@ -267,7 +278,9 @@ func createStage(rc *config.Receiver, tmpl *template.Template, wait func() time.
 		var s MultiStage
 		s = append(s, NewWaitStage(wait))
 		s = append(s, NewDedupStage(i, notificationLog, recv))
+		// RetryStage真正将通知发送出去
 		s = append(s, NewRetryStage(i, rc.Name))
+		// 设置Notification Stage
 		s = append(s, NewSetNotifiesStage(notificationLog, recv))
 
 		fs = append(fs, s)
@@ -277,15 +290,18 @@ func createStage(rc *config.Receiver, tmpl *template.Template, wait func() time.
 
 // RoutingStage executes the inner stages based on the receiver specified in
 // the context.
+// RoutingStage基于指定在上下文的receiver执行inner stages
 type RoutingStage map[string]Stage
 
 // Exec implements the Stage interface.
 func (rs RoutingStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
+	// 从ctx中获取receiver name
 	receiver, ok := ReceiverName(ctx)
 	if !ok {
 		return ctx, nil, fmt.Errorf("receiver missing")
 	}
 
+	// 找到receiver对应的stage
 	s, ok := rs[receiver]
 	if !ok {
 		return ctx, nil, fmt.Errorf("stage for receiver missing")
@@ -295,11 +311,13 @@ func (rs RoutingStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.
 }
 
 // A MultiStage executes a series of stages sequentially.
+// 一个MultiStage顺序执行一系列的stages
 type MultiStage []Stage
 
 // Exec implements the Stage interface.
 func (ms MultiStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	var err error
+	// 遍历各个Stage用于过滤alerts
 	for _, s := range ms {
 		if len(alerts) == 0 {
 			return ctx, nil, nil
@@ -314,10 +332,13 @@ func (ms MultiStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 }
 
 // FanoutStage executes its stages concurrently
+// FanoutStage并行地执行它的stages
 type FanoutStage []Stage
 
 // Exec attempts to execute all stages concurrently and discards the results.
 // It returns its input alerts and a types.MultiError if one or more stages fail.
+// Exec试着并行地执行所有的stages并且丢弃results
+// 它返回输入的results以及一个types.MultiError，如果一个或多个stages失败了
 func (fs FanoutStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	var (
 		wg sync.WaitGroup
@@ -326,6 +347,7 @@ func (fs FanoutStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.A
 	wg.Add(len(fs))
 
 	for _, s := range fs {
+		// 并行地执行多个Stage
 		go func(s Stage) {
 			if _, _, err := s.Exec(ctx, l, alerts...); err != nil {
 				me.Add(err)
@@ -350,6 +372,7 @@ func (fs FanoutStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.A
 }
 
 // GossipSettleStage waits until the Gossip has settled to forward alerts.
+// GossipSettleStage等待直到Gossip已经稳定了，再发送alerts
 type GossipSettleStage struct {
 	peer *cluster.Peer
 }
@@ -363,10 +386,12 @@ func (n *GossipSettleStage) Exec(ctx context.Context, l log.Logger, alerts ...*t
 	if n.peer != nil {
 		n.peer.WaitReady()
 	}
+	// 如果peer为nil，则直接返回
 	return ctx, alerts, nil
 }
 
 // MuteStage filters alerts through a Muter.
+// MuteStage通过一个Muter过滤alerts
 type MuteStage struct {
 	muter types.Muter
 }
@@ -382,7 +407,9 @@ func (n *MuteStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 	for _, a := range alerts {
 		// TODO(fabxc): increment total alerts counter.
 		// Do not send the alert if muted.
+		// 遍历alerts，如果被静默的话，就过滤
 		if !n.muter.Mutes(a.Labels) {
+			// 如果没有被静默，则加入filtered这个slice中
 			filtered = append(filtered, a)
 		}
 		// TODO(fabxc): increment muted alerts counter if muted.
@@ -392,11 +419,13 @@ func (n *MuteStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 
 // WaitStage waits for a certain amount of time before continuing or until the
 // context is done.
+// WaitStage等待一个时间段，在继续之前或者直到context结束
 type WaitStage struct {
 	wait func() time.Duration
 }
 
 // NewWaitStage returns a new WaitStage.
+// NewWaitStage返回一个新的WaitStage
 func NewWaitStage(wait func() time.Duration) *WaitStage {
 	return &WaitStage{
 		wait: wait,
@@ -406,6 +435,7 @@ func NewWaitStage(wait func() time.Duration) *WaitStage {
 // Exec implements the Stage interface.
 func (ws *WaitStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	select {
+	// WaitStage等待固定时间段
 	case <-time.After(ws.wait()):
 	case <-ctx.Done():
 		return ctx, nil, ctx.Err()
@@ -415,6 +445,8 @@ func (ws *WaitStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 
 // DedupStage filters alerts.
 // Filtering happens based on a notification log.
+// DedupStage过滤alerts
+// 过滤基于一个notification log
 type DedupStage struct {
 	nflog NotificationLog
 	recv  *nflogpb.Receiver
@@ -425,6 +457,7 @@ type DedupStage struct {
 }
 
 // NewDedupStage wraps a DedupStage that runs against the given notification log.
+// NewDedupStage封装了一个DedupStage，基于给定的notification log
 func NewDedupStage(i Integration, l NotificationLog, recv *nflogpb.Receiver) *DedupStage {
 	return &DedupStage{
 		nflog: l,
@@ -483,10 +516,13 @@ func hashAlert(a *types.Alert) uint64 {
 func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint64]struct{}, repeat time.Duration) bool {
 	// If we haven't notified about the alert group before, notify right away
 	// unless we only have resolved alerts.
+	// 如果我们之前还没有通知alert group，马上进行通知
+	// 除非我们只有resolved alerts
 	if entry == nil {
 		return len(firing) > 0
 	}
 
+	// 如果当前的firing不是已经发送过的firing的一个子集，则返回true
 	if !entry.IsFiringSubset(firing) {
 		return true
 	}
@@ -494,6 +530,9 @@ func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint
 	// Notify about all alerts being resolved.
 	// This is done irrespective of the send_resolved flag to make sure that
 	// the firing alerts are cleared from the notification log.
+	// 通知所有的alerts都已经被resolved
+	// 不管send_resolved这个flag是否已经被设置，这只是用来确保firing alerts已经从notification
+	// log中移除了
 	if len(firing) == 0 {
 		// If the current alert group and last notification contain no firing
 		// alert, it means that some alerts have been fired and resolved during the
@@ -507,6 +546,7 @@ func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint
 	}
 
 	// Nothing changed, only notify if the repeat interval has passed.
+	// 什么改变都没有发生，只会在repeat interval过去的时候才进行notify
 	return entry.Timestamp.Before(n.now().Add(-repeat))
 }
 
@@ -517,6 +557,7 @@ func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 		return ctx, nil, fmt.Errorf("group key missing")
 	}
 
+	// 从ctx中获取repeat interval
 	repeatInterval, ok := RepeatInterval(ctx)
 	if !ok {
 		return ctx, nil, fmt.Errorf("repeat interval missing")
@@ -531,6 +572,7 @@ func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 	for _, a := range alerts {
 		hash = n.hash(a)
 		if a.Resolved() {
+			// 将当前的alerts分别划入resolved和firing
 			resolved = append(resolved, hash)
 			resolvedSet[hash] = struct{}{}
 		} else {
@@ -542,6 +584,7 @@ func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 	ctx = WithFiringAlerts(ctx, firing)
 	ctx = WithResolvedAlerts(ctx, resolved)
 
+	// 用group key和receiver查询nflog
 	entries, err := n.nflog.Query(nflog.QGroupKey(gkey), nflog.QReceiver(n.recv))
 
 	if err != nil && err != nflog.ErrNotFound {
@@ -555,6 +598,7 @@ func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 	case 2:
 		return ctx, nil, fmt.Errorf("unexpected entry result size %d", len(entries))
 	}
+	// 根据entry解析是否需要update
 	if n.needsUpdate(entry, firingSet, resolvedSet, repeatInterval) {
 		return ctx, alerts, nil
 	}
@@ -563,6 +607,8 @@ func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 
 // RetryStage notifies via passed integration with exponential backoff until it
 // succeeds. It aborts if the context is canceled or timed out.
+// RetryStage通过传入的integration发送通知并且指数回退直到成功
+// 它会abort直到context被cancel或者超时
 type RetryStage struct {
 	integration Integration
 	groupName   string
@@ -583,7 +629,10 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 	// If we shouldn't send notifications for resolved alerts, but there are only
 	// resolved alerts, report them all as successfully notified (we still want the
 	// notification log to log them for the next run of DedupStage).
+	// 如果我们不应该为resolved alerts发送通知，但是只有resolved alerts,则汇报它们已经成功进行了通知
+	// 我们还是需要notification log去记录它们，为了DedupStage的下一轮运行
 	if !r.integration.conf.SendResolved() {
+		// 如果不发送resolved alerts
 		firing, ok := FiringAlerts(ctx)
 		if !ok {
 			return ctx, nil, fmt.Errorf("firing alerts missing")
@@ -603,14 +652,17 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 	var (
 		i    = 0
 		b    = backoff.NewExponentialBackOff()
+		// 根据回推创建一个ticker
 		tick = backoff.NewTicker(b)
 		iErr error
 	)
 	defer tick.Stop()
 
+	// Notify会一直重试，直到重试的时间间隔为60s
 	for {
 		i++
 		// Always check the context first to not notify again.
+		// 总是先检查context，从而不会重复通知
 		select {
 		case <-ctx.Done():
 			if iErr != nil {
@@ -622,8 +674,10 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 		}
 
 		select {
+		// 利用回退机制
 		case <-tick.C:
 			now := time.Now()
+			// 调用integration.Notify发送通知
 			retry, err := r.integration.Notify(ctx, sent...)
 			notificationLatencySeconds.WithLabelValues(r.integration.name).Observe(time.Since(now).Seconds())
 			numNotifications.WithLabelValues(r.integration.name).Inc()
@@ -631,6 +685,7 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 				numFailedNotifications.WithLabelValues(r.integration.name).Inc()
 				level.Debug(l).Log("msg", "Notify attempt failed", "attempt", i, "integration", r.integration.name, "receiver", r.groupName, "err", err)
 				if !retry {
+					// 因为不可恢复的错误，取消notify retry
 					return ctx, alerts, fmt.Errorf("cancelling notify retry for %q due to unrecoverable error: %s", r.integration.name, err)
 				}
 
@@ -652,6 +707,8 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 
 // SetNotifiesStage sets the notification information about passed alerts. The
 // passed alerts should have already been sent to the receivers.
+// SetNotifiesStage设置关于passed alerts的通知信息
+// passed alerts应该已经被发送给了receivers
 type SetNotifiesStage struct {
 	nflog NotificationLog
 	recv  *nflogpb.Receiver
@@ -672,6 +729,7 @@ func (n SetNotifiesStage) Exec(ctx context.Context, l log.Logger, alerts ...*typ
 		return ctx, nil, fmt.Errorf("group key missing")
 	}
 
+	// 获取firing alerts和resolved alerts的值
 	firing, ok := FiringAlerts(ctx)
 	if !ok {
 		return ctx, nil, fmt.Errorf("firing alerts missing")
@@ -682,5 +740,6 @@ func (n SetNotifiesStage) Exec(ctx context.Context, l log.Logger, alerts ...*typ
 		return ctx, nil, fmt.Errorf("resolved alerts missing")
 	}
 
+	// 调用n.nflog.Log，记录firing和resolved alerts
 	return ctx, alerts, n.nflog.Log(n.recv, gkey, firing, resolved)
 }

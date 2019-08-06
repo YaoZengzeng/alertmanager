@@ -24,6 +24,7 @@ import (
 )
 
 // Matcher defines a matching rule for the value of a given label.
+// Matcher为一个给定的label的value定义了一个matching rule
 type Matcher struct {
 	Name    string `json:"name"`
 	Value   string `json:"value"`
@@ -105,6 +106,8 @@ func NewRegexMatcher(name model.LabelName, re *regexp.Regexp) *Matcher {
 
 // Matchers provides the Match and Fingerprint methods for a slice of Matchers.
 // Matchers must always be sorted.
+// Matchers为一系列的Matchers提供了Match和Fingerprint方法
+// Matchers必须总是被排序的
 type Matchers []*Matcher
 
 // NewMatchers returns the given Matchers sorted.

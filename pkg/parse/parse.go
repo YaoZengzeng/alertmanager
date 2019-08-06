@@ -33,14 +33,17 @@ var (
 
 func Matchers(s string) ([]*labels.Matcher, error) {
 	matchers := []*labels.Matcher{}
+	// 去掉前后的引号
 	s = strings.TrimPrefix(s, "{")
 	s = strings.TrimSuffix(s, "}")
 
 	var insideQuotes bool
 	var token string
 	var tokens []string
+	// 遍历字符串中的字符
 	for _, r := range s {
 		if !insideQuotes && r == ',' {
+			// 不处于insideQuotes，并且遇到','，则生成一个token
 			tokens = append(tokens, token)
 			token = ""
 			continue
@@ -53,6 +56,7 @@ func Matchers(s string) ([]*labels.Matcher, error) {
 	if token != "" {
 		tokens = append(tokens, token)
 	}
+	// 遍历token，生成Matcher
 	for _, token := range tokens {
 		m, err := Matcher(token)
 		if err != nil {
@@ -65,6 +69,7 @@ func Matchers(s string) ([]*labels.Matcher, error) {
 }
 
 func Matcher(s string) (*labels.Matcher, error) {
+	// 从输入中解析出name, value和matchType
 	name, value, matchType, err := Input(s)
 	if err != nil {
 		return nil, err

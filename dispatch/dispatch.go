@@ -32,6 +32,8 @@ import (
 
 // Dispatcher sorts incoming alerts into aggregation groups and
 // assigns the correct notifiers to each.
+// Dispatcher将所有进入的alerts进行排序并且加入aggregation groups
+// 并且为每个aggregation groups赋予一个correct notifiers
 type Dispatcher struct {
 	route  *Route
 	alerts provider.Alerts
@@ -40,6 +42,7 @@ type Dispatcher struct {
 	marker  types.Marker
 	timeout func(time.Duration) time.Duration
 
+	// aggrGroups首先根据*Route进行分类，在每个分类中再以Fingerprint为key作为划分
 	aggrGroups map[*Route]map[model.Fingerprint]*aggrGroup
 	mtx        sync.RWMutex
 
@@ -51,6 +54,7 @@ type Dispatcher struct {
 }
 
 // NewDispatcher returns a new Dispatcher.
+// NewDispatcher返回一个新的Dispatcher
 func NewDispatcher(
 	ap provider.Alerts,
 	r *Route,
@@ -71,6 +75,7 @@ func NewDispatcher(
 }
 
 // Run starts dispatching alerts incoming via the updates channel.
+// Run启动incoming alerts，通过updates channel
 func (d *Dispatcher) Run() {
 	d.done = make(chan struct{})
 
@@ -78,6 +83,7 @@ func (d *Dispatcher) Run() {
 	d.aggrGroups = map[*Route]map[model.Fingerprint]*aggrGroup{}
 	d.mtx.Unlock()
 
+	// 创建相应的context和cancel函数
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 
 	d.run(d.alerts.Subscribe())
@@ -109,15 +115,19 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 				continue
 			}
 
+			// 对于某个alert，在dispatcher中进行路由匹配
 			for _, r := range d.route.Match(alert.Labels) {
 				d.processAlert(alert, r)
 			}
 
 		case <-cleanup.C:
+			// 定期对空的aggrGroups进行删除
+			// 每隔30s
 			d.mtx.Lock()
 
 			for _, groups := range d.aggrGroups {
 				for _, ag := range groups {
+					// 如果aggrGroups为空就直接删除
 					if ag.empty() {
 						ag.stop()
 						delete(groups, ag.fingerprint())
@@ -134,6 +144,7 @@ func (d *Dispatcher) run(it provider.AlertIterator) {
 }
 
 // AlertGroup represents how alerts exist within an aggrGroup.
+// AlertGroup代表了alerts在一个aggGroup中存在的状态
 type AlertGroup struct {
 	Alerts   []*types.Alert
 	Labels   model.LabelSet
@@ -227,18 +238,23 @@ func (d *Dispatcher) Stop() {
 // notifyFunc is a function that performs notification for the alert
 // with the given fingerprint. It aborts on context cancelation.
 // Returns false iff notifying failed.
+// notifyFunc是用于通知给定fingerprint的alert的函数
+// 如果发生context cancelation或者通知失败就会返回false
 type notifyFunc func(context.Context, ...*types.Alert) bool
 
 // processAlert determines in which aggregation group the alert falls
 // and inserts it.
+// processAlert决定一个alert应该落到哪个aggregation group并且插入它
 func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
 	groupLabels := getGroupLabels(alert, route)
 
+	// 获取group labels的fingerprint
 	fp := groupLabels.Fingerprint()
 
 	d.mtx.Lock()
 	defer d.mtx.Unlock()
 
+	// route --> group --> alert
 	group, ok := d.aggrGroups[route]
 	if !ok {
 		group = map[model.Fingerprint]*aggrGroup{}
@@ -246,12 +262,16 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
 	}
 
 	// If the group does not exist, create it.
+	// 如果group不存在，则创建它
 	ag, ok := group[fp]
 	if !ok {
+		// 创建新的聚合组
 		ag = newAggrGroup(d.ctx, groupLabels, route, d.timeout, d.logger)
 		group[fp] = ag
 
+		// ag.run()的参数是通知函数,notify
 		go ag.run(func(ctx context.Context, alerts ...*types.Alert) bool {
+			// 执行stage的各个阶段用于发送通知
 			_, _, err := d.stage.Exec(ctx, d.logger, alerts...)
 			if err != nil {
 				lvl := level.Error(d.logger)
@@ -267,23 +287,29 @@ func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
 		})
 	}
 
+	// 在alert group中加入alert
 	ag.insert(alert)
 }
 
 func getGroupLabels(alert *types.Alert, route *Route) model.LabelSet {
 	groupLabels := model.LabelSet{}
 	for ln, lv := range alert.Labels {
+		// 如果alert中有labels在RouteOpts的GroupBy中，或者RouteOpts有GroupByAll
+		// 则将该label加入groupLabels
 		if _, ok := route.RouteOpts.GroupBy[ln]; ok || route.RouteOpts.GroupByAll {
 			groupLabels[ln] = lv
 		}
 	}
 
+	// 根据GroupBy筛选出用于group的labels
 	return groupLabels
 }
 
 // aggrGroup aggregates alert fingerprints into groups to which a
 // common set of routing options applies.
 // It emits notifications in the specified intervals.
+// aggrGroup将alert fingerprints聚合到groups，这些groups会应用同样的routing options
+// 它在指定的intervals发射notifications
 type aggrGroup struct {
 	labels   model.LabelSet
 	opts     *RouteOpts
@@ -294,6 +320,7 @@ type aggrGroup struct {
 	ctx     context.Context
 	cancel  func()
 	done    chan struct{}
+	// next对应GroupWait
 	next    *time.Timer
 	timeout func(time.Duration) time.Duration
 
@@ -302,6 +329,7 @@ type aggrGroup struct {
 }
 
 // newAggrGroup returns a new aggregation group.
+// newAggrGroup返回一个新的aggregation group
 func newAggrGroup(ctx context.Context, labels model.LabelSet, r *Route, to func(time.Duration) time.Duration, logger log.Logger) *aggrGroup {
 	if to == nil {
 		to = func(d time.Duration) time.Duration { return d }
@@ -310,7 +338,9 @@ func newAggrGroup(ctx context.Context, labels model.LabelSet, r *Route, to func(
 		labels:   labels,
 		routeKey: r.Key(),
 		opts:     &r.RouteOpts,
+		// timeout是一个函数，根据输入的time.Duration，返回一个time.Duration
 		timeout:  to,
+		// 创建新的alert store
 		alerts:   store.NewAlerts(15 * time.Minute),
 	}
 	ag.ctx, ag.cancel = context.WithCancel(ctx)
@@ -320,6 +350,7 @@ func newAggrGroup(ctx context.Context, labels model.LabelSet, r *Route, to func(
 
 	// Set an initial one-time wait before flushing
 	// the first batch of notifications.
+	// 设置一个初始的one-time wait，在刷新第一批的notification之前
 	ag.next = time.NewTimer(ag.opts.GroupWait)
 
 	return ag
@@ -345,18 +376,23 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 
 	for {
 		select {
+		// ag.next.C开始是groupwait，后来是groupinterval
 		case now := <-ag.next.C:
 			// Give the notifications time until the next flush to
 			// finish before terminating them.
+			// 给定notifications time直到下一次flush结束，在终止它们之前
 			ctx, cancel := context.WithTimeout(ag.ctx, ag.timeout(ag.opts.GroupInterval))
 
 			// The now time we retrieve from the ticker is the only reliable
 			// point of time reference for the subsequent notification pipeline.
 			// Calculating the current time directly is prone to flaky behavior,
 			// which usually only becomes apparent in tests.
+			// 在context中添加now
 			ctx = notify.WithNow(ctx, now)
 
 			// Populate context with information needed along the pipeline.
+			// 在context中填充pipeline一路所需的信息
+			// 包括group key，group labels，receiver name以及repeat interval
 			ctx = notify.WithGroupKey(ctx, ag.GroupKey())
 			ctx = notify.WithGroupLabels(ctx, ag.labels)
 			ctx = notify.WithReceiverName(ctx, ag.opts.Receiver)
@@ -364,6 +400,7 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 
 			// Wait the configured interval before calling flush again.
 			ag.mtx.Lock()
+			// 在再次调用flush之前，将next重置为group interval
 			ag.next.Reset(ag.opts.GroupInterval)
 			ag.hasFlushed = true
 			ag.mtx.Unlock()
@@ -388,15 +425,19 @@ func (ag *aggrGroup) stop() {
 }
 
 // insert inserts the alert into the aggregation group.
+// insert把alert插入aggregation group
 func (ag *aggrGroup) insert(alert *types.Alert) {
+	// 在ag.alerts中设置alert
 	if err := ag.alerts.Set(alert); err != nil {
 		level.Error(ag.logger).Log("msg", "error on set alert", "err", err)
 	}
 
 	// Immediately trigger a flush if the wait duration for this
 	// alert is already over.
+	// 马上出发一个flush，如果这个alert的wait duration已经结束了
 	ag.mtx.Lock()
 	defer ag.mtx.Unlock()
+	// 如果ag没有flush过并且alert的起始时间+groupwait小于当前时间，则立即触发flush
 	if !ag.hasFlushed && alert.StartsAt.Add(ag.opts.GroupWait).Before(time.Now()) {
 		ag.next.Reset(0)
 	}
@@ -407,12 +448,15 @@ func (ag *aggrGroup) empty() bool {
 }
 
 // flush sends notifications for all new alerts.
+// flush发送notifications到所有新的alerts
+// 将notify函数作为参数传入
 func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 	if ag.empty() {
 		return
 	}
 
 	var (
+		// 获取aggregation group中的所有alerts
 		alerts      = ag.alerts.List()
 		alertsSlice = make(types.AlertSlice, 0, len(alerts))
 		now         = time.Now()
@@ -420,7 +464,9 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 	for _, alert := range alerts {
 		a := *alert
 		// Ensure that alerts don't resolve as time move forwards.
+		// 确保随着时间的推移，alert没有被resolve
 		if !a.ResolvedAt(now) {
+			// 如果alert还没有resolve，则将EndsAt设置为空
 			a.EndsAt = time.Time{}
 		}
 		alertsSlice = append(alertsSlice, &a)
@@ -429,10 +475,13 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 
 	level.Debug(ag.logger).Log("msg", "flushing", "alerts", fmt.Sprintf("%v", alertsSlice))
 
+	// 调用notify函数对alertsSlice进行通知
+	// 后期每隔groupinterval就进行flush
 	if notify(alertsSlice...) {
 		for _, a := range alertsSlice {
 			// Only delete if the fingerprint has not been inserted
 			// again since we notified about it.
+			// 只有在fingerprint在我们通知它之后没有再次插入，才删除它
 			fp := a.Fingerprint()
 			got, err := ag.alerts.Get(fp)
 			if err != nil {
@@ -441,6 +490,8 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 				level.Error(ag.logger).Log("msg", "failed to get alert", "err", err)
 				continue
 			}
+			// 如果alert已经被resolved并且获取到的UpdatedAt的时间和alert的Updated的时间相等
+			// 即表示没有更新，则将它从alerts中删除
 			if a.Resolved() && got.UpdatedAt == a.UpdatedAt {
 				if err := ag.alerts.Delete(fp); err != nil {
 					level.Error(ag.logger).Log("msg", "error on delete alert", "err", err)

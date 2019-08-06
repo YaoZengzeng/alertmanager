@@ -132,11 +132,14 @@ var xxx_messageInfo_Entry proto.InternalMessageInfo
 
 // MeshEntry is a wrapper message to communicate a notify log
 // entry through a mesh network.
+// MeshEntry是一个wrapper message，用于在一个mesh network中交互notify log entry
 type MeshEntry struct {
 	// The original raw notify log entry.
+	// 原始的notify log entry
 	Entry *Entry `protobuf:"bytes,1,opt,name=entry,proto3" json:"entry,omitempty"`
 	// A timestamp indicating when the mesh peer should evict
 	// the log entry from its state.
+	// 一个时间戳，用于表示mesh peer何时应该从state中删除log entry
 	ExpiresAt            time.Time `protobuf:"bytes,2,opt,name=expires_at,json=expiresAt,proto3,stdtime" json:"expires_at"`
 	XXX_NoUnkeyedLiteral struct{}  `json:"-"`
 	XXX_unrecognized     []byte    `json:"-"`

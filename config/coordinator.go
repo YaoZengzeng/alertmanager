@@ -26,6 +26,7 @@ import (
 
 // Coordinator coordinates Alertmanager configurations beyond the lifetime of a
 // single configuration.
+// Coordinator协调Alertmanager的配置，超过单个configuration的生命周期
 type Coordinator struct {
 	configFilePath string
 	logger         log.Logger
@@ -33,6 +34,7 @@ type Coordinator struct {
 	// Protects config and subscribers
 	mutex       sync.Mutex
 	config      *Config
+	// 一系列的订阅者，在配置更改时reload
 	subscribers []func(*Config) error
 
 	configHashMetric        prometheus.Gauge
@@ -43,6 +45,8 @@ type Coordinator struct {
 // NewCoordinator returns a new coordinator with the given configuration file
 // path. It does not yet load the configuration from file. This is done in
 // `Reload()`.
+// NewCoordinator用给定的配置文件路径返回一个新的coordinator
+// 它现在不会从文件中加载配置，它会在`Reload()`中完成
 func NewCoordinator(configFilePath string, r prometheus.Registerer, l log.Logger) *Coordinator {
 	c := &Coordinator{
 		configFilePath: configFilePath,
@@ -76,6 +80,7 @@ func (c *Coordinator) registerMetrics(r prometheus.Registerer) {
 }
 
 // Subscribe subscribes the given Subscribers to configuration changes.
+// Subscribe用给定的Subscribers订阅配置的更改
 func (c *Coordinator) Subscribe(ss ...func(*Config) error) {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -84,6 +89,7 @@ func (c *Coordinator) Subscribe(ss ...func(*Config) error) {
 }
 
 func (c *Coordinator) notifySubscribers() error {
+	// 遍历各个subscriber，分发通知
 	for _, s := range c.subscribers {
 		if err := s(c.config); err != nil {
 			return err
@@ -112,6 +118,7 @@ func (c *Coordinator) loadFromFile() error {
 
 // Reload triggers a configuration reload from file and notifies all
 // configuration change subscribers.
+// Reload触发从文件重新加载配置并且通知所有的configuration change subscribers
 func (c *Coordinator) Reload() error {
 	c.mutex.Lock()
 	defer c.mutex.Unlock()
@@ -133,6 +140,7 @@ func (c *Coordinator) Reload() error {
 		"file", c.configFilePath,
 	)
 
+	// 依次调用subscribers
 	if err := c.notifySubscribers(); err != nil {
 		c.logger.Log(
 			"msg", "one or more config change subscribers failed to apply new config",

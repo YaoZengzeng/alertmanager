@@ -33,6 +33,7 @@ import (
 )
 
 // Template bundles a text and a html template instance.
+// Template捆绑了一个text以及一个html template实例
 type Template struct {
 	text *tmpltext.Template
 	html *tmplhtml.Template
@@ -42,6 +43,7 @@ type Template struct {
 
 // FromGlobs calls ParseGlob on all path globs provided and returns the
 // resulting Template.
+// FromGlobs为提供的所有path globs调用了ParseGlob并且返回resluting Template
 func FromGlobs(paths ...string) (*Template, error) {
 	t := &Template{
 		text: tmpltext.New("").Option("missingkey=zero"),
@@ -52,6 +54,7 @@ func FromGlobs(paths ...string) (*Template, error) {
 	t.text = t.text.Funcs(tmpltext.FuncMap(DefaultFuncs))
 	t.html = t.html.Funcs(tmplhtml.FuncMap(DefaultFuncs))
 
+	// 打开default.tmpl
 	f, err := asset.Assets.Open("/templates/default.tmpl")
 	if err != nil {
 		return nil, err
@@ -223,9 +226,11 @@ func (kv KV) Values() []string {
 }
 
 // Data is the data passed to notification templates and webhook pushes.
+// Data是发送给notification templates以及webhook pushes的内容
 //
 // End-users should not be exposed to Go's type system, as this will confuse them and prevent
 // simple things like simple equality checks to fail. Map everything to float64/string.
+// 终端用户不应该暴露在Go的类型系统中，因为这会让它们感到疑惑
 type Data struct {
 	Receiver string `json:"receiver"`
 	Status   string `json:"status"`
@@ -249,9 +254,11 @@ type Alert struct {
 }
 
 // Alerts is a list of Alert objects.
+// Alerts是一系列的Alert对象
 type Alerts []Alert
 
 // Firing returns the subset of alerts that are firing.
+// Firing返回已经处于firing状态的alerts的子集
 func (as Alerts) Firing() []Alert {
 	res := []Alert{}
 	for _, a := range as {
@@ -263,6 +270,7 @@ func (as Alerts) Firing() []Alert {
 }
 
 // Resolved returns the subset of alerts that are resolved.
+// Resolved返回已经处于resolved状态的alerts
 func (as Alerts) Resolved() []Alert {
 	res := []Alert{}
 	for _, a := range as {
@@ -274,6 +282,7 @@ func (as Alerts) Resolved() []Alert {
 }
 
 // Data assembles data for template expansion.
+// Data汇聚data用于模版扩展
 func (t *Template) Data(recv string, groupLabels model.LabelSet, alerts ...*types.Alert) *Data {
 	data := &Data{
 		Receiver:          regexp.QuoteMeta(strings.SplitN(recv, "/", 2)[0]),
@@ -287,6 +296,7 @@ func (t *Template) Data(recv string, groupLabels model.LabelSet, alerts ...*type
 
 	// The call to types.Alert is necessary to correctly resolve the internal
 	// representation to the user representation.
+	// 调用types.Alert是必须的，用于正确地将内部的表示切换到用户的表示
 	for _, a := range types.Alerts(alerts...) {
 		alert := Alert{
 			Status:       string(a.Status()),
@@ -309,6 +319,7 @@ func (t *Template) Data(recv string, groupLabels model.LabelSet, alerts ...*type
 		data.GroupLabels[string(k)] = string(v)
 	}
 
+	// 从alert中过滤出共同的labels和annotations
 	if len(alerts) >= 1 {
 		var (
 			commonLabels      = alerts[0].Labels.Clone()

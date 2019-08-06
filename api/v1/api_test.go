@@ -35,12 +35,14 @@ import (
 )
 
 // fakeAlerts is a struct implementing the provider.Alerts interface for tests.
+// fakeAlerts时一个实现了provider.Alerts接口的结构用于测试
 type fakeAlerts struct {
 	fps    map[model.Fingerprint]int
 	alerts []*types.Alert
 	err    error
 }
 
+// 构建fake alerts
 func newFakeAlerts(alerts []*types.Alert, withErr bool) *fakeAlerts {
 	fps := make(map[model.Fingerprint]int)
 	for i, a := range alerts {
@@ -81,6 +83,7 @@ func newGetAlertStatus(f *fakeAlerts) func(model.Fingerprint) types.AlertStatus 
 		if !ok {
 			return status
 		}
+		// alert的状态以及silenced_by和inhibited_by都存在labels里了
 		alert := f.alerts[i]
 		switch alert.Labels["state"] {
 		case "active":
@@ -140,13 +143,16 @@ func TestAddAlerts(t *testing.T) {
 			Route:  &route,
 		})
 
+		// 构建一个Request
 		r, err := http.NewRequest("POST", "/api/v1/alerts", bytes.NewReader(b))
+		// 创建一个http.ResponseWriter
 		w := httptest.NewRecorder()
 		if err != nil {
 			t.Errorf("Unexpected error %v", err)
 		}
 
 		api.addAlerts(w, r)
+		// 返回一个*http.Response
 		res := w.Result()
 		body, _ := ioutil.ReadAll(res.Body)
 

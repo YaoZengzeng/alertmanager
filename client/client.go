@@ -171,6 +171,7 @@ type Alert struct {
 }
 
 // ExtendedAlert represents an alert as returned by the AlertManager's list alert API.
+// ExtendedAlert代表一个由AlertManager的list alert API返回的alert
 type ExtendedAlert struct {
 	Alert
 	Status      types.AlertStatus `json:"status"`
@@ -188,6 +189,7 @@ type LabelName string
 type LabelValue string
 
 // NewAlertAPI returns a new AlertAPI for the client.
+// NewAlertAPI为client返回一个新的AlertAPI
 func NewAlertAPI(c api.Client) AlertAPI {
 	return &httpAlertAPI{client: apiClient{c}}
 }

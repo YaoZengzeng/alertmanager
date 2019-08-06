@@ -32,7 +32,11 @@ var (
 // their fingerprint. Resolved alerts are removed from the map based on
 // gcInterval. An optional callback can be set which receives a slice of all
 // resolved alerts that have been removed.
+// Alerts提供了对于在内存中的map of alerts的lock-coordinated
+// key是它们的fingerprint，已经被resolved alerts会基于gcInterval从map中移除
+// 可以增加一个可选的callback，能够用它接收到所有已经被移除的resolved alerts
 type Alerts struct {
+	// 一个Alerts有垃圾回收的时间
 	gcInterval time.Duration
 
 	sync.Mutex
@@ -41,8 +45,10 @@ type Alerts struct {
 }
 
 // NewAlerts returns a new Alerts struct.
+// NewAlerts返回一个新的Alerts结构
 func NewAlerts(gcInterval time.Duration) *Alerts {
 	if gcInterval == 0 {
+		// 默认的gc的时间间隔为1min
 		gcInterval = time.Minute
 	}
 
@@ -56,6 +62,7 @@ func NewAlerts(gcInterval time.Duration) *Alerts {
 }
 
 // SetGCCallback sets a GC callback to be executed after each GC.
+// SetGCCallback设置了在每次GC之后需要执行的回调函数
 func (a *Alerts) SetGCCallback(cb func([]*types.Alert)) {
 	a.Lock()
 	defer a.Unlock()
@@ -64,19 +71,23 @@ func (a *Alerts) SetGCCallback(cb func([]*types.Alert)) {
 }
 
 // Run starts the GC loop.
+// Run启动GC loop
 func (a *Alerts) Run(ctx context.Context) {
 	go func(t *time.Ticker) {
 		for {
 			select {
+				// 等待context结束
 			case <-ctx.Done():
 				return
 			case <-t.C:
+				// 定时GC
 				a.gc()
 			}
 		}
 	}(time.NewTicker(a.gcInterval))
 }
 
+// 定期把已经resolved的alert给gc掉
 func (a *Alerts) gc() {
 	a.Lock()
 	defer a.Unlock()
@@ -105,10 +116,12 @@ func (a *Alerts) Get(fp model.Fingerprint) (*types.Alert, error) {
 }
 
 // Set unconditionally sets the alert in memory.
+// Set无条件地将alert设置在memory中
 func (a *Alerts) Set(alert *types.Alert) error {
 	a.Lock()
 	defer a.Unlock()
 
+	// 根据fingerprint设置相应的alert
 	a.c[alert.Fingerprint()] = alert
 	return nil
 }
@@ -123,6 +136,7 @@ func (a *Alerts) Delete(fp model.Fingerprint) error {
 }
 
 // List returns a slice of Alerts currently held in memory.
+// List返回当前存储在内存中的一系列Alerts
 func (a *Alerts) List() []*types.Alert {
 	a.Lock()
 	defer a.Unlock()

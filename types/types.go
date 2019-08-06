@@ -27,6 +27,7 @@ type AlertState string
 
 // Possible values for AlertState.
 const (
+	// 可能的AlertState的数目为"unprocessed", "active"或者"suppressed"
 	AlertStateUnprocessed AlertState = "unprocessed"
 	AlertStateActive      AlertState = "active"
 	AlertStateSuppressed  AlertState = "suppressed"
@@ -38,6 +39,9 @@ const (
 // silences while InhibitedBy may contain only a subset of the inhibiting alerts
 // – in practice exactly one ID. (This somewhat confusing semantics might change
 // in the future.)
+// AlertStatus存储了一个alert的状态，包括静默了这个alert的silences IDs以及其他已知了这个
+// alert的其他alert，需要注意的是，SilencedBy应该包含所有的相关的silences，然而InhibitedBy
+// 可能只包含inhibiting alerts的一个子集，在实践中只有一个ID
 type AlertStatus struct {
 	State       AlertState `json:"state"`
 	SilencedBy  []string   `json:"silencedBy"`
@@ -48,9 +52,13 @@ type AlertStatus struct {
 
 // Marker helps to mark alerts as silenced and/or inhibited.
 // All methods are goroutine-safe.
+// Marker用来将alerts标记为silenced以及/或者inhibited
+// 所有的方法都是goroutine-safe的
 type Marker interface {
 	// SetActive sets the provided alert to AlertStateActive and deletes all
 	// SilencedBy and InhibitedBy entries.
+	// SetActive将给定的alert设置为AlertStateActive并且移除所有SilencedBy以及
+	// InhibitedBy entries
 	SetActive(alert model.Fingerprint)
 	// SetSilenced replaces the previous SilencedBy by the provided IDs of
 	// silences, including the version number of the silences state. The set
@@ -70,11 +78,14 @@ type Marker interface {
 
 	// Count alerts of the given state(s). With no state provided, count all
 	// alerts.
+	// Count统计给定的state的数目，如果没有提供state，计算所有的alerts
 	Count(...AlertState) int
 
 	// Status of the given alert.
+	// Status返回给定的alert的状态
 	Status(model.Fingerprint) AlertStatus
 	// Delete the given alert.
+	// 删除给定的alert
 	Delete(model.Fingerprint)
 
 	// Various methods to inquire if the given alert is in a certain
@@ -82,6 +93,9 @@ type Marker interface {
 	// Inhibited may return only a subset of inhibiting alerts. Silenced
 	// also returns the version of the silences state the result is based
 	// on.
+	// 各种方法用于查询给定的alert是否处于某个AlertState，Silenced返回所有相关的silences
+	// 而Inhibited可能只会返回inhibiting alerts的一个子集，Silenced也会返回result基于的
+	// silences的状态
 	Unprocessed(model.Fingerprint) bool
 	Active(model.Fingerprint) bool
 	Silenced(model.Fingerprint) ([]string, int, bool)
@@ -89,6 +103,7 @@ type Marker interface {
 }
 
 // NewMarker returns an instance of a Marker implementation.
+// NewMarker返回一个Marker实现的一个实例
 func NewMarker(r prometheus.Registerer) Marker {
 	m := &memMarker{
 		m: map[model.Fingerprint]*AlertStatus{},
@@ -100,6 +115,7 @@ func NewMarker(r prometheus.Registerer) Marker {
 }
 
 type memMarker struct {
+	// 以alert的Fingerprint作为key
 	m map[model.Fingerprint]*AlertStatus
 
 	mtx sync.RWMutex
@@ -156,11 +172,14 @@ func (m *memMarker) SetSilenced(alert model.Fingerprint, version int, ids ...str
 		s = &AlertStatus{}
 		m.m[alert] = s
 	}
+	// 重新设置silencesVersion
 	s.silencesVersion = version
 
 	// If there are any silence or alert IDs associated with the
 	// fingerprint, it is suppressed. Otherwise, set it to
 	// AlertStateUnprocessed.
+	// 如果有silence或者alert IDs和fingerprint相绑定，则设置为suppressed
+	// 否则，设置为AlertStateUnprocessed
 	if len(ids) == 0 && len(s.InhibitedBy) == 0 {
 		m.mtx.Unlock()
 		m.SetActive(alert)
@@ -186,12 +205,15 @@ func (m *memMarker) SetInhibited(alert model.Fingerprint, ids ...string) {
 	// If there are any silence or alert IDs associated with the
 	// fingerprint, it is suppressed. Otherwise, set it to
 	// AlertStateUnprocessed.
+	// 如果有任何的silence或者alert IDs和fingerprint相关，则它被抑制
+	// 否则，将它设置为AlertStateUnprocessed
 	if len(ids) == 0 && len(s.SilencedBy) == 0 {
 		m.mtx.Unlock()
 		m.SetActive(alert)
 		return
 	}
 
+	// 设置为suppressed
 	s.State = AlertStateSuppressed
 	s.InhibitedBy = ids
 
@@ -212,18 +234,22 @@ func (m *memMarker) SetActive(alert model.Fingerprint) {
 		m.m[alert] = s
 	}
 
+	// 将状态设置为active，把silence和inhibited都消除
 	s.State = AlertStateActive
 	s.SilencedBy = []string{}
 	s.InhibitedBy = []string{}
 }
 
 // Status implements Marker.
+// Status实现了Marker
 func (m *memMarker) Status(alert model.Fingerprint) AlertStatus {
 	m.mtx.RLock()
 	defer m.mtx.RUnlock()
 
+	// 根据fingerprint，在marker中找到相应的printer
 	s, found := m.m[alert]
 	if !found {
+		// 如果没有在Marker中找到，则设置为unprocessed
 		s = &AlertStatus{
 			State:       AlertStateUnprocessed,
 			SilencedBy:  []string{},
@@ -261,9 +287,12 @@ func (m *memMarker) Inhibited(alert model.Fingerprint) ([]string, bool) {
 // Silenced returns whether the alert for the given Fingerprint is in the
 // Silenced state, any associated silence IDs, and the silences state version
 // the result is based on.
+// Silenced返回是否给定的Fingerprint的alert处于Silenced状态，任何相关的silence IDs
+// 以及基于的state version
 func (m *memMarker) Silenced(alert model.Fingerprint) ([]string, int, bool) {
 	s := m.Status(alert)
 	return s.SilencedBy, s.silencesVersion,
+		// 是否处于suppressed状态并且s.SilencedBy大于0
 		s.State == AlertStateSuppressed && len(s.SilencedBy) > 0
 }
 
@@ -314,6 +343,8 @@ func (e *MultiError) Error() string {
 // to internal of the Alertmanager.
 // The type is never exposed to external communication and the
 // embedded alert has to be sanitized beforehand.
+// Alert用和Alertmanager有关的额外的信息封装了model.Alert
+// 本类型不能被暴露用于external communication
 type Alert struct {
 	model.Alert
 
@@ -366,8 +397,11 @@ func Alerts(alerts ...*Alert) model.Alerts {
 // Merge merges the timespan of two alerts based and overwrites annotations
 // based on the authoritative timestamp.  A new alert is returned, the labels
 // are assumed to be equal.
+// Merge合并两个alerts的timespan，并且基于authoritative timestamp来覆盖annotations
+// 返回一个新的alert，labels假设是相等的
 func (a *Alert) Merge(o *Alert) *Alert {
 	// Let o always be the younger alert.
+	// 总是选择更年轻的alert
 	if o.UpdatedAt.Before(a.UpdatedAt) {
 		return o.Merge(a)
 	}
@@ -375,18 +409,23 @@ func (a *Alert) Merge(o *Alert) *Alert {
 	res := *o
 
 	// Always pick the earliest starting time.
+	// 永远选择最早的start time
 	if a.StartsAt.Before(o.StartsAt) {
 		res.StartsAt = a.StartsAt
 	}
 
 	if o.Resolved() {
 		// The latest explicit resolved timestamp wins if both alerts are effectively resolved.
+		// 如果两个alerts都被resolved，则最新的resolved timestamp获胜
 		if a.Resolved() && a.EndsAt.After(o.EndsAt) {
+			// 如果两个alert都resolve了，选择更大的End time
 			res.EndsAt = a.EndsAt
 		}
 	} else {
 		// A non-timeout timestamp always rules if it is the latest.
+		// non-timeout的时间戳总是占优势，如果它是最新的话
 		if a.EndsAt.After(o.EndsAt) && !a.Timeout {
+			// 如果新的alert的endsAt在old之后，且没有设置timeout，则将其设置
 			res.EndsAt = a.EndsAt
 		}
 	}
@@ -397,6 +436,8 @@ func (a *Alert) Merge(o *Alert) *Alert {
 // A Muter determines whether a given label set is muted. Implementers that
 // maintain an underlying Marker are expected to update it during a call of
 // Mutes.
+// Muter决定一个给定的label set是否被静默，一个底层Marker的实现者期望在调用Mutes的时候
+// 更新它
 type Muter interface {
 	Mutes(model.LabelSet) bool
 }
@@ -408,11 +449,14 @@ type MuteFunc func(model.LabelSet) bool
 func (f MuteFunc) Mutes(lset model.LabelSet) bool { return f(lset) }
 
 // A Silence determines whether a given label set is muted.
+// Silence决定一个给定的label set是否静音
 type Silence struct {
 	// A unique identifier across all connected instances.
+	// 所有实例的唯一标识
 	ID string `json:"id"`
 	// A set of matchers determining if a label set is affect
 	// by the silence.
+	// 一系列的matchers用于决定是否一个label set被这个silence影响
 	Matchers Matchers `json:"matchers"`
 
 	// Time range of the silence.
@@ -421,6 +465,9 @@ type Silence struct {
 	// * EndsAt must be after StartsAt
 	// * Deleting a silence means to set EndsAt to now
 	// * Time range must not be modified in different ways
+	// * StartsAt必须不在creation time之前，EndsAt必须在StartsAt之后
+	// * 删除一个silence意味着将EndsAt设置为现在
+	// * Time range必须不能以其他方式改变
 	//
 	// TODO(fabxc): this may potentially be extended by
 	// creation and update timestamps.
@@ -428,9 +475,11 @@ type Silence struct {
 	EndsAt   time.Time `json:"endsAt"`
 
 	// The last time the silence was updated.
+	// 上一次silence更新的时间
 	UpdatedAt time.Time `json:"updatedAt"`
 
 	// Information about who created the silence for which reason.
+	// 谁创建了silence以及什么原因创建
 	CreatedBy string `json:"createdBy"`
 	Comment   string `json:"comment,omitempty"`
 
@@ -444,6 +493,7 @@ func (s *Silence) Expired() bool {
 }
 
 // SilenceStatus stores the state of a silence.
+// SilenceStatus存储一个silence的状态
 type SilenceStatus struct {
 	State SilenceState `json:"state"`
 }
@@ -453,6 +503,7 @@ type SilenceState string
 
 // Possible values for SilenceState.
 const (
+	// 可能的silence的状态为"expected", "active"以及"pending"
 	SilenceStateExpired SilenceState = "expired"
 	SilenceStateActive  SilenceState = "active"
 	SilenceStatePending SilenceState = "pending"

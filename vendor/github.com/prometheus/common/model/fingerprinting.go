@@ -20,6 +20,7 @@ import (
 
 // Fingerprint provides a hash-capable representation of a Metric.
 // For our purposes, FNV-1A 64-bit is used.
+// Fingerprint提供一个Metric的hash-capable表示
 type Fingerprint uint64
 
 // FingerprintFromString transforms a string representation into a Fingerprint.

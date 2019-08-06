@@ -128,6 +128,7 @@ func (cfg *TransportConfig) WithSchemes(schemes []string) *TransportConfig {
 }
 
 // Alertmanager is a client for alertmanager
+// Alertmanager是alertmanager的一个client
 type Alertmanager struct {
 	Alert *alert.Client
 

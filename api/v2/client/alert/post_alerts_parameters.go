@@ -74,6 +74,7 @@ func NewPostAlertsParamsWithHTTPClient(client *http.Client) *PostAlertsParams {
 
 /*PostAlertsParams contains all the parameters to send to the API endpoint
 for the post alerts operation typically these are written to a http.Request
+PostAlertParams包含了所有发送给API endpoint的参数，用于post alerts，这些通常都会写入一个http.Request
 */
 type PostAlertsParams struct {
 

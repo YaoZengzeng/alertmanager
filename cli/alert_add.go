@@ -36,17 +36,21 @@ type alertAddCmd struct {
 const alertAddHelp = `Add a new alert.
 
 This command is used to add a new alert to Alertmanager.
+这个命令用来给Alertmanager增加一个新的alert
 
 To add a new alert with labels:
+增加一个新的有着alert的labels
 
 	amtool alert add alertname=foo node=bar
 
 If alertname is omitted and the first argument does not contain a '=' then it will
 be assumed to be the value of the alertname pair.
+如果alertname被忽略了并且第一个参数不包含'='，那么这个参数就为alertname pair的value
 
 	amtool alert add foo node=bar
 
 One or more annotations can be added using the --annotation flag:
+一个或多个annotations可以通过--annotation这个flag加入
 
 	amtool alert add foo node=bar \
 		--annotation=runbook='http://runbook.biz' \
@@ -54,6 +58,7 @@ One or more annotations can be added using the --annotation flag:
 		--annotation=description='description of the alert'
 
 Additional flags such as --generator-url, --start, and --end are also supported.
+额外的flags例如--generator-url, --start以及--end都是支持的
 `
 
 func configureAddAlertCmd(cc *kingpin.CmdClause) {
@@ -117,6 +122,7 @@ func (a *alertAddCmd) addAlert(ctx context.Context, _ *kingpin.ParseContext) err
 
 	amclient := NewAlertmanagerClient(alertmanagerURL)
 
+	// POST一系列的Alert
 	_, err = amclient.Alert.PostAlerts(alertParams)
 	return err
 }

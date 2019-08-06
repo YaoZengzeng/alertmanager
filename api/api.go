@@ -36,6 +36,7 @@ import (
 )
 
 // API represents all APIs of Alertmanager.
+// API代表了Alertmanager所有的APIs
 type API struct {
 	v1                       *apiv1.API
 	v2                       *apiv2.API
@@ -73,6 +74,8 @@ type Options struct {
 	// GroupFunc returns a list of alert groups. The alerts are grouped
 	// according to the current active configuration. Alerts returned are
 	// filtered by the arguments provided to the function.
+	// GroupFunc返回一系列的alert groups，alerts根据当前活跃的配置被分组
+	// 返回的Alerts时根据提供给函数的参数分组的
 	GroupFunc func(func(*dispatch.Route) bool, func(*types.Alert, time.Time) bool) (dispatch.AlertGroups, map[model.Fingerprint][]string)
 }
 
@@ -94,6 +97,7 @@ func (o Options) validate() error {
 
 // New creates a new API object combining all API versions. Note that an Update
 // call is also needed to get the APIs into an operational state.
+// New创建一个组合了所有API版本的新的API对象，需要注意的是，让所有的APIs进入运作状态需要一个Update调用
 func New(opts Options) (*API, error) {
 	if err := opts.validate(); err != nil {
 		return nil, fmt.Errorf("invalid API options: %s", err)
@@ -121,6 +125,7 @@ func New(opts Options) (*API, error) {
 
 	v2, err := apiv2.NewAPI(
 		opts.Alerts,
+		// apiv2比v1多了一个GroupFunc
 		opts.GroupFunc,
 		opts.StatusFunc,
 		opts.Silences,
@@ -195,6 +200,7 @@ func (api *API) Register(r *route.Router, routePrefix string) *http.ServeMux {
 
 // Update config and resolve timeout of each API. APIv2 also needs
 // setAlertStatus to be updated.
+// 更新config以及每个API的resolve timeout，APIv2也需要更新setAlertStatus
 func (api *API) Update(cfg *config.Config, setAlertStatus func(model.LabelSet)) {
 	api.v1.Update(cfg)
 	api.v2.Update(cfg, setAlertStatus)

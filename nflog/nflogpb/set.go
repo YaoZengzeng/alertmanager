@@ -15,6 +15,8 @@ package nflogpb
 
 // IsFiringSubset returns whether the given subset is a subset of the alerts
 // that were firing at the time of the last notification.
+// IsFiringSubset返回给定的subset是否是alerts的一个subset
+// 在上次的notification中firing的
 func (m *Entry) IsFiringSubset(subset map[uint64]struct{}) bool {
 	set := map[uint64]struct{}{}
 	for i := range m.FiringAlerts {

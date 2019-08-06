@@ -40,6 +40,7 @@ type Client struct {
 
 /*
 GetReceivers Get list of all receivers (name of notification integrations)
+GetReceivers获取所有receivers的list
 */
 func (a *Client) GetReceivers(params *GetReceiversParams) (*GetReceiversOK, error) {
 	// TODO: Validate the params before sending

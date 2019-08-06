@@ -26,15 +26,19 @@ const (
 )
 
 // Alert is a generic representation of an alert in the Prometheus eco-system.
+// Alert时一个alert在Prometheus生态系统中的一个通用的表示
 type Alert struct {
 	// Label value pairs for purpose of aggregation, matching, and disposition
 	// dispatching. This must minimally include an "alertname" label.
+	// Label values pairs用于聚合，匹配以及处置调度，它们必须至少包含一个"alertname"的label
 	Labels LabelSet `json:"labels"`
 
 	// Extra key/value information which does not define alert identity.
+	// 额外的键值信息，不用来定义标示alert
 	Annotations LabelSet `json:"annotations"`
 
 	// The known time range for this alert. Both ends are optional.
+	// alert的已知的time range，两端都是可选的
 	StartsAt     time.Time `json:"startsAt,omitempty"`
 	EndsAt       time.Time `json:"endsAt,omitempty"`
 	GeneratorURL string    `json:"generatorURL"`
@@ -47,6 +51,8 @@ func (a *Alert) Name() string {
 
 // Fingerprint returns a unique hash for the alert. It is equivalent to
 // the fingerprint of the alert's label set.
+// Fingerprint返回alert的一个唯一的hash，它和这个alert的label set的fingerprint
+// 是一致的
 func (a *Alert) Fingerprint() Fingerprint {
 	return a.Labels.Fingerprint()
 }
@@ -61,6 +67,7 @@ func (a *Alert) String() string {
 
 // Resolved returns true iff the activity interval ended in the past.
 func (a *Alert) Resolved() bool {
+	// 如果alert的EndsAt不在当前之后，则标记为Resolved
 	return a.ResolvedAt(time.Now())
 }
 
@@ -74,6 +81,7 @@ func (a *Alert) ResolvedAt(ts time.Time) bool {
 }
 
 // Status returns the status of the alert.
+// Status返回一个alert的状态
 func (a *Alert) Status() AlertStatus {
 	if a.Resolved() {
 		return AlertResolved

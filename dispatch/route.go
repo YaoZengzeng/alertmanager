@@ -36,26 +36,33 @@ var DefaultRouteOpts = RouteOpts{
 }
 
 // A Route is a node that contains definitions of how to handle alerts.
+// 一个Route是一个node，包含了如何处理alerts的定义
 type Route struct {
 	parent *Route
 
 	// The configuration parameters for matches of this route.
+	// 匹配这条路由的配置参数
 	RouteOpts RouteOpts
 
 	// Equality or regex matchers an alert has to fulfill to match
 	// this route.
+	// 为了满足这个route，一个alert需要匹配的Equality或者regex matchers
 	Matchers types.Matchers
 
 	// If true, an alert matches further routes on the same level.
+	// 如果为true，则alert在同一个level继续路由匹配
 	Continue bool
 
 	// Children routes of this route.
+	// 子路由
 	Routes []*Route
 }
 
 // NewRoute returns a new route.
+// NewRoute返回一个新的route
 func NewRoute(cr *config.Route, parent *Route) *Route {
 	// Create default and overwrite with configured settings.
+	// 创建默认的RouteOpts并且用configured settings覆写
 	opts := DefaultRouteOpts
 	if parent != nil {
 		opts = parent.RouteOpts
@@ -84,6 +91,7 @@ func NewRoute(cr *config.Route, parent *Route) *Route {
 	}
 
 	// Build matchers.
+	// 构建matchers
 	var matchers types.Matchers
 
 	for ln, lv := range cr.Match {
@@ -101,6 +109,7 @@ func NewRoute(cr *config.Route, parent *Route) *Route {
 		Continue:  cr.Continue,
 	}
 
+	// 构建子route
 	route.Routes = NewRoutes(cr.Routes, route)
 
 	return route
@@ -117,6 +126,7 @@ func NewRoutes(croutes []*config.Route, parent *Route) []*Route {
 
 // Match does a depth-first left-to-right search through the route tree
 // and returns the matching routing nodes.
+// Match做一个深度优先，从左到右的遍历，并且返回匹配的routing nodes
 func (r *Route) Match(lset model.LabelSet) []*Route {
 	if !r.Matchers.Match(lset) {
 		return nil
@@ -143,6 +153,7 @@ func (r *Route) Match(lset model.LabelSet) []*Route {
 }
 
 // Key returns a key for the route. It does not uniquely identify a the route in general.
+// Key返回route的一个key，一般来说它不能唯一地标识一个route
 func (r *Route) Key() string {
 	b := make([]byte, 0, 1024)
 
@@ -155,18 +166,23 @@ func (r *Route) Key() string {
 
 // RouteOpts holds various routing options necessary for processing alerts
 // that match a given route.
+// RouteOpts包含处理匹配给定的route的alerts的各种路由选项
 type RouteOpts struct {
 	// The identifier of the associated notification configuration.
+	// 相关联的notification configuration的identifier
 	Receiver string
 
 	// What labels to group alerts by for notifications.
+	// 用于聚合alerts进行通知的labels
 	GroupBy map[model.LabelName]struct{}
 
 	// Use all alert labels to group.
+	// 使用所有的alert labels用于group
 	GroupByAll bool
 
 	// How long to wait to group matching alerts before sending
 	// a notification.
+	// 在发送notification之前，等待聚合matching alerts的时间
 	GroupWait      time.Duration
 	GroupInterval  time.Duration
 	RepeatInterval time.Duration

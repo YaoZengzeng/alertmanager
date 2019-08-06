@@ -105,7 +105,9 @@ func run() int {
 	var (
 		configFile      = kingpin.Flag("config.file", "Alertmanager configuration file name.").Default("alertmanager.yml").String()
 		dataDir         = kingpin.Flag("storage.path", "Base path for data storage.").Default("data/").String()
+		// 数据保留的时间是120h
 		retention       = kingpin.Flag("data.retention", "How long to keep data for.").Default("120h").Duration()
+		// alert gc的时间是30min
 		alertGCInterval = kingpin.Flag("alerts.gc-interval", "Interval between alert GC.").Default("30m").Duration()
 
 		externalURL    = kingpin.Flag("web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.").String()
@@ -149,6 +151,7 @@ func run() int {
 	var peer *cluster.Peer
 	// 如果clusterBindAddr不为空，则初始化gossip mesh
 	if *clusterBindAddr != "" {
+		// 创建peer
 		peer, err = cluster.Create(
 			log.With(logger, "component", "cluster"),
 			prometheus.DefaultRegisterer,
@@ -173,6 +176,7 @@ func run() int {
 	wg.Add(1)
 
 	notificationLogOpts := []nflog.Option{
+		// 保留时间默认的120h
 		nflog.WithRetention(*retention),
 		nflog.WithSnapshot(filepath.Join(*dataDir, "nflog")),
 		nflog.WithMaintenance(15*time.Minute, stopc, wg.Done),
@@ -187,12 +191,15 @@ func run() int {
 	}
 	if peer != nil {
 		c := peer.AddState("nfl", notificationLog, prometheus.DefaultRegisterer)
+		// 如果设置了集群模式，则设置broadcast
 		notificationLog.SetBroadcast(c.Broadcast)
 	}
 
+	// 创建全局的marker，用来标记alert的状态
 	marker := types.NewMarker(prometheus.DefaultRegisterer)
 
 	silenceOpts := silence.Options{
+		// silences默认的保留时间也为120h
 		SnapshotFile: filepath.Join(*dataDir, "silences"),
 		Retention:    *retention,
 		Logger:       log.With(logger, "component", "silences"),
@@ -223,6 +230,7 @@ func run() int {
 	}()
 
 	// Peer state listeners have been registered, now we can join and get the initial state.
+	// Peer state listeners已经被注册了，现在我们可以加入并且获取初始的状态
 	if peer != nil {
 		err = peer.Join(
 			*reconnectInterval,
@@ -241,6 +249,7 @@ func run() int {
 		go peer.Settle(ctx, *gossipInterval*10)
 	}
 
+	// marker也作为参数传入，在gc的时候可以从marker中删除已经resolved的alert
 	alerts, err := mem.NewAlerts(context.Background(), marker, *alertGCInterval, logger)
 	if err != nil {
 		level.Error(logger).Log("err", err)
@@ -258,6 +267,7 @@ func run() int {
 	api, err := api.New(api.Options{
 		Alerts:      alerts,
 		Silences:    silences,
+		// StatusFunc取自marker
 		StatusFunc:  marker.Status,
 		Peer:        peer,
 		Timeout:     *httpTimeout,
@@ -278,8 +288,10 @@ func run() int {
 		return 1
 	}
 
+	// 默认的waitfunc直接返回0
 	waitFunc := func() time.Duration { return 0 }
 	if peer != nil {
+		// 如果peer不为nil，重新设置waitFunc为clusterWait
 		waitFunc = clusterWait(peer, *peerTimeout)
 	}
 	timeoutFunc := func(d time.Duration) time.Duration {
@@ -301,7 +313,9 @@ func run() int {
 		prometheus.DefaultRegisterer,
 		log.With(logger, "component", "configuration"),
 	)
+	// 一旦发生reload，要重现全部构建
 	configCoordinator.Subscribe(func(conf *config.Config) error {
+		// 加载template
 		tmpl, err = template.FromGlobs(conf.Templates...)
 		if err != nil {
 			return fmt.Errorf("failed to parse templates: %v", err.Error())
@@ -311,8 +325,10 @@ func run() int {
 		inhibitor.Stop()
 		disp.Stop()
 
+		// 根据配置创建新的inhibitor，silencer和pipeline
 		inhibitor = inhibit.NewInhibitor(alerts, conf.InhibitRules, marker, logger)
 		silencer = silence.NewSilencer(silences, marker, logger)
+		// 创建通知的处理流水线
 		pipeline = notify.BuildPipeline(
 			conf.Receivers,
 			tmpl,
@@ -324,14 +340,18 @@ func run() int {
 			logger,
 		)
 
+		// 用配置更新api
 		api.Update(conf, func(labels model.LabelSet) {
 			inhibitor.Mutes(labels)
 			silencer.Mutes(labels)
 		})
 
+		// 创建新的dipatcher
+		// pipeline就是notify.Stage
 		disp = dispatch.NewDispatcher(alerts, dispatch.NewRoute(conf.Route, nil), pipeline, marker, timeoutFunc, logger)
 
 		go disp.Run()
+		// 执行goroutine，运行inhibitor
 		go inhibitor.Run()
 
 		return nil
@@ -391,6 +411,7 @@ func run() int {
 			case <-hup:
 				// ignore error, already logged in `reload()`
 				_ = configCoordinator.Reload()
+			// webReload重新触发
 			case errc := <-webReload:
 				errc <- configCoordinator.Reload()
 			}

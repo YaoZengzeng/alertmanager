@@ -130,6 +130,7 @@ func (b *ExponentialBackOff) GetElapsedTime() time.Duration {
 }
 
 // Increments the current interval by multiplying it with the multiplier.
+// 增加当前的interval，用乘以multiplier的方式
 func (b *ExponentialBackOff) incrementCurrentInterval() {
 	// Check for overflow, if overflow is detected set the current interval to the max interval.
 	if float64(b.currentInterval) >= float64(b.MaxInterval)/b.Multiplier {

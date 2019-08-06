@@ -30,6 +30,8 @@ var (
 	}
 
 	// DefaultEmailConfig defines default values for Email configurations.
+	// DefaultEmailConfig为Email的配置定义默认的值
+	// 默认使用的是HTML格式的模板
 	DefaultEmailConfig = EmailConfig{
 		NotifierConfig: NotifierConfig{
 			VSendResolved: false,
@@ -140,6 +142,7 @@ var (
 )
 
 // NotifierConfig contains base options common across all notifier configurations.
+// NotifierConfig包含基础配置，对于所有的notifer配置都是通用的
 type NotifierConfig struct {
 	VSendResolved bool `yaml:"send_resolved" json:"send_resolved"`
 }
@@ -149,10 +152,13 @@ func (nc *NotifierConfig) SendResolved() bool {
 }
 
 // EmailConfig configures notifications via mail.
+// EmailConfig配置了通过邮件进行notifications
 type EmailConfig struct {
+	// yaml和json的配置都是內联
 	NotifierConfig `yaml:",inline" json:",inline"`
 
 	// Email address to notify.
+	// 用于通知的Email
 	To           string              `yaml:"to,omitempty" json:"to,omitempty"`
 	From         string              `yaml:"from,omitempty" json:"from,omitempty"`
 	Hello        string              `yaml:"hello,omitempty" json:"hello,omitempty"`
@@ -399,6 +405,7 @@ func (c *HipchatConfig) UnmarshalYAML(unmarshal func(interface{}) error) error {
 }
 
 // WebhookConfig configures notifications via a generic webhook.
+// WebhookConfig配置了通过generic webhook进行通知
 type WebhookConfig struct {
 	NotifierConfig `yaml:",inline" json:",inline"`
 
