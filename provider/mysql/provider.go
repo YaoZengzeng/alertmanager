@@ -1,7 +1,7 @@
 package mysql
 
 import (
-	"time"
+	"sync"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -38,7 +38,7 @@ func NewAlerts(dbconfig *MysqlConfig, m types.Marker, l log.Logger) (*Alerts, er
 
 	a := &Alerts{
 		db:			db,
-		listeners:	map[int]listeningAlerts{}
+		listeners:	map[int]listeningAlerts{},
 		next:		0,
 		logger:		log.With(l, "component", "provider"),
 	}
@@ -49,6 +49,13 @@ func NewAlerts(dbconfig *MysqlConfig, m types.Marker, l log.Logger) (*Alerts, er
 // Close the alert provider.
 func (a *Alerts) Close() {
 	return
+}
+
+func max(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // Subscribe returns an iterator over active alerts that have not been
@@ -113,7 +120,7 @@ func (a *Alerts) Put(alerts ...*types.Alert) error {
 
 		fp := alert.Fingerprint()
 
-		err = a.db.GetLastAlert(fp)
+		alert, err = a.db.GetLastAlert(fp)
 		if err != nil {
 			level.Error(a.logger).Log("msg", "error on get alert", "err", err)
 			continue

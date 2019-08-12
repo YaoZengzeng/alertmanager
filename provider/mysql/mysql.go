@@ -1,6 +1,7 @@
 package mysql
 
 import (
+	"errors"
 	"fmt"
 	"time"
 
@@ -11,6 +12,7 @@ import (
 	"github.com/go-kit/kit/log/level"
 
 	"github.com/prometheus/common/model"
+	"github.com/prometheus/alertmanager/types"
 )
 
 var (
@@ -18,7 +20,7 @@ var (
 	ErrNotFound = errors.New("alert not found")
 )
 
-type MysqlConfig {
+type MysqlConfig struct {
 	User		string
 	Password 	string
 	Address		string
@@ -68,13 +70,13 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 	}
 
 	schema := `CREATE DATABASE IF NOT EXISTS alertdb;`
-	result, err := db.Exec(schema)
+	_, err = db.Exec(schema)
 	if err != nil {
 		return nil, fmt.Errorf("Create database alertdb failed: %v", err)
 	}
 
 	schema = `USE alertdb;`
-	result, err = db.Exec(schema)
+	_, err = db.Exec(schema)
 	if err != nil {
 		return nil, fmt.Errorf("Change to database alertdb failed: %v", err)
 	}
@@ -108,9 +110,9 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 
 // queryAlert query the matching alerts from db directly.
 func (db *DB) queryAlert(alert AlertDBItem, limit int) ([]AlertDBItem, error) {
-	schema := fmt.Sprintf("SELECT * FROM alerts WHERE alertname REGEXP :alertname and serverity REGEXP :serverity and resourcetype REGEXP :resourcetype and source REGEXP :source and organization REGEXP :organization
+	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE alertname REGEXP :alertname and serverity REGEXP :serverity and resourcetype REGEXP :resourcetype and source REGEXP :source and organization REGEXP :organization
 					and project REGEXP :project and cluster REGEXP :cluster and namespace REGEXP :namespace and node REGEXP :node and pod REGEXP :pod and deployment REGEXP :deployment and statefulset REGEXP :statefulset
-					and extend REGEXP :extend ORDER BY start DESC LIMIT %d", limit)
+					and extend REGEXP :extend ORDER BY start DESC LIMIT %d`, limit)
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)
 	err = nstmt.Select(&res, alert)
@@ -122,7 +124,7 @@ func (db *DB) queryAlert(alert AlertDBItem, limit int) ([]AlertDBItem, error) {
 }
 
 // queryUnresolved query the unresolved alerts from db directly.
-func (db *DB) queryUnresolved() ([]AlertItem, error) {
+func (db *DB) queryUnresolved() ([]AlertDBItem, error) {
 	res := []AlertDBItem{}
 	err := db.Select(&res, `SELECT * FROM alerts WHERE end > ?`, time.Now())
 	if err != nil {
@@ -201,31 +203,33 @@ func itemToAlert(item AlertDBItem) *types.Alert {
 
 func alertToItem(alert *types.Alert) AlertDBItem {
 	return AlertDBItem{
-		Id:	alert.Fingerprint().String(),
-		Alertname:		string(alert.Labels[model.LabelName("alertname")]),
-		Serverity:		string(alert.Labels[model.LabelName("serverity")]),
-		Resourcetype:	string(alert.Labels[model.LabelName("resourcetype")]),
-		Source:			string(alert.Labels[model.LabelName("source")]),
-		Info:			string(alert.Annotations[model.LabelName("info")]),
-		Start:			alert.StartsAt,
-		End:			alert.EndsAt,
+		AlertItem: AlertItem{
+			Id:	alert.Fingerprint().String(),
+			Alertname:		string(alert.Labels[model.LabelName("alertname")]),
+			Serverity:		string(alert.Labels[model.LabelName("serverity")]),
+			Resourcetype:	string(alert.Labels[model.LabelName("resourcetype")]),
+			Source:			string(alert.Labels[model.LabelName("source")]),
+			Info:			string(alert.Annotations[model.LabelName("info")]),
+			Start:			alert.StartsAt,
+			End:			alert.EndsAt,
 
-		Organization:	string(alert.Labels[model.LabelName("organization")]),
-		Project:		string(alert.Labels[model.LabelName("project")]),
-		Cluster:		string(alert.Labels[model.LabelName("cluster")]),
-		Namespace:		string(alert.Labels[model.LabelName("namespace")]),
-		Node:			string(alert.Labels[model.LabelName("node")]),
-		Pod:			string(alert.Labels[model.LabelName("pod")]),
-		Deployment:		string(alert.Labels[model.LabelName("deployment")]),
-		Statefulset:	string(alert.Labels[model.LabelName("statefulset")]),
+			Organization:	string(alert.Labels[model.LabelName("organization")]),
+			Project:		string(alert.Labels[model.LabelName("project")]),
+			Cluster:		string(alert.Labels[model.LabelName("cluster")]),
+			Namespace:		string(alert.Labels[model.LabelName("namespace")]),
+			Node:			string(alert.Labels[model.LabelName("node")]),
+			Pod:			string(alert.Labels[model.LabelName("pod")]),
+			Deployment:		string(alert.Labels[model.LabelName("deployment")]),
+			Statefulset:	string(alert.Labels[model.LabelName("statefulset")]),
 
-		// TODO: fullfill extend field.
+			// TODO: fullfill extend field.
+		},
 	}
 }
 
 func (db *DB) GetLastAlert(fp model.Fingerprint) (*types.Alert, error) {
 	alert := AlertDBItem{AlertItem: AlertItem{Id: fp.String()}}
-	alerts, err := db.queryAlert(alert, limit)
+	alerts, err := db.queryAlert(alert, 1)
 	if err != nil {
 		return nil, err
 	}
@@ -239,7 +243,7 @@ func (db *DB) GetLastAlert(fp model.Fingerprint) (*types.Alert, error) {
 }
 
 func (db *DB) Set(a *types.Alert) error {
-	return db.InsertAlert(alertToItem(a))
+	return db.InsertAlert(alertToItem(a).AlertItem)
 }
 
 func (db *DB) ListUnresolved() []*types.Alert {

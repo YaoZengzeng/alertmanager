@@ -11,10 +11,12 @@ require (
 	github.com/go-openapi/strfmt v0.17.2
 	github.com/go-openapi/swag v0.17.2
 	github.com/go-openapi/validate v0.17.2
+	github.com/go-sql-driver/mysql v1.4.1
 	github.com/gogo/protobuf v1.2.1
 	github.com/hashicorp/go-sockaddr v1.0.2
 	github.com/hashicorp/memberlist v0.1.3
 	github.com/jessevdk/go-flags v0.0.0-20180331124232-1c38ed7ad0cc
+	github.com/jmoiron/sqlx v1.2.0
 	github.com/kr/pretty v0.1.0 // indirect
 	github.com/kylelemons/godebug v0.0.0-20160406211939-eadb3ce320cb
 	github.com/matttproud/golang_protobuf_extensions v1.0.1
@@ -30,9 +32,9 @@ require (
 	github.com/shurcooL/vfsgen v0.0.0-20180825020608-02ddb050ef6b
 	github.com/stretchr/testify v1.2.2
 	github.com/xlab/treeprint v0.0.0-20180616005107-d6fb6747feb6
-	golang.org/x/net v0.0.0-20181201002055-351d144fa1fc
-	golang.org/x/text v0.3.1-0.20180805044716-cb6730876b98 // indirect
-	golang.org/x/tools v0.0.0-20190118193359-16909d206f00
+	golang.org/x/net v0.0.0-20190603091049-60506f45cf65
+	golang.org/x/tools v0.0.0-20190606124116-d0a3d012864b
+	google.golang.org/appengine v1.6.1 // indirect
 	gopkg.in/alecthomas/kingpin.v2 v2.2.6
 	gopkg.in/yaml.v2 v2.2.2
 )
