@@ -5,8 +5,8 @@ LABEL maintainer="The Prometheus Authors <prometheus-developers@googlegroups.com
 
 ARG ARCH="amd64"
 ARG OS="linux"
-COPY .build/${OS}-${ARCH}/amtool       /bin/amtool
-COPY .build/${OS}-${ARCH}/alertmanager /bin/alertmanager
+COPY amtool       /bin/amtool
+COPY alertmanager /bin/alertmanager
 COPY examples/ha/alertmanager.yml      /etc/alertmanager/alertmanager.yml
 
 RUN mkdir -p /alertmanager && \

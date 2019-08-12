@@ -46,7 +46,7 @@ import (
 	"github.com/prometheus/alertmanager/inhibit"
 	"github.com/prometheus/alertmanager/nflog"
 	"github.com/prometheus/alertmanager/notify"
-	"github.com/prometheus/alertmanager/provider/mem"
+	"github.com/prometheus/alertmanager/provider/mysql"
 	"github.com/prometheus/alertmanager/silence"
 	"github.com/prometheus/alertmanager/template"
 	"github.com/prometheus/alertmanager/types"
@@ -239,7 +239,21 @@ func run() int {
 		go peer.Settle(ctx, *gossipInterval*10)
 	}
 
-	alerts, err := mem.NewAlerts(context.Background(), marker, *alertGCInterval, logger)
+/*	alerts, err := mem.NewAlerts(context.Background(), marker, *alertGCInterval, logger)
+	if err != nil {
+		level.Error(logger).Log("err", err)
+		return 1
+	}
+	defer alerts.Close()*/
+
+	dbconfig := &mysql.MysqlConfig{
+		User:		"root",
+		Password:	"",
+		Address:	"",
+		Port:		"3306",
+	}
+
+	alerts, err := mysql.NewAlerts(dbconfig, marker, logger)
 	if err != nil {
 		level.Error(logger).Log("err", err)
 		return 1
