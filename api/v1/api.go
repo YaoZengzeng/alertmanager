@@ -325,6 +325,7 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// 获取Alert Provider
 	alerts := api.alerts.GetPending()
 	defer alerts.Close()
 
@@ -384,6 +385,7 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 			Fingerprint: a.Fingerprint().String(),
 		}
 
+		// 筛选出alerts
 		res = append(res, alert)
 	}
 	api.mtx.RUnlock()
@@ -414,6 +416,7 @@ func receiversMatchFilter(receivers []string, filter *regexp.Regexp) bool {
 func alertMatchesFilterLabels(a *model.Alert, matchers []*labels.Matcher) bool {
 	sms := make(map[string]string)
 	for name, value := range a.Labels {
+		// 遍历model.Alert
 		sms[string(name)] = string(value)
 	}
 	return matchFilterLabels(matchers, sms)
