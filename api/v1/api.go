@@ -17,13 +17,13 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"regexp"
 	"sort"
+	"strconv"
 	"sync"
 	"time"
-	"strconv"
-	"math"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -261,11 +261,11 @@ func parseTime(s string) (time.Time, error) {
 
 func (api *API) listResolvedAlerts(w http.ResponseWriter, r *http.Request) {
 	var (
-		err 		error
+		err error
 		// Initialize result slice to prevent api returning `null` when there
 		// are no alerts present
-		res 		= []*Alert{}
-		matchers 	= []*labels.Matcher{}
+		res      = []*Alert{}
+		matchers = []*labels.Matcher{}
 	)
 
 	// For resolved alerts, "=~" and "!~" are not needed, "=" means regex already.
@@ -281,13 +281,12 @@ func (api *API) listResolvedAlerts(w http.ResponseWriter, r *http.Request) {
 	}
 
 	labels := map[string]string{}
-	for i, _ := range matchers {
+	for i := range matchers {
 		labels[matchers[i].Name] = matchers[i].Value
 	}
 
-
 	var start, end time.Time
-	if start, end = parseTime(r.FormValue("start")); err != nil {
+	if start, err = parseTime(r.FormValue("start")); err != nil {
 		api.respondError(w, apiError{
 			typ: errorBadData,
 			err: err,
@@ -308,7 +307,7 @@ func (api *API) listResolvedAlerts(w http.ResponseWriter, r *http.Request) {
 
 	for a := range alerts.Next() {
 		alert := &Alert{
-			Alert:	&a.Alert,
+			Alert: &a.Alert,
 		}
 		res = append(res, alert)
 	}

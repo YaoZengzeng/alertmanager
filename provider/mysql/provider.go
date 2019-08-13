@@ -7,27 +7,27 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/prometheus/common/model"
-	"github.com/prometheus/alertmanager/types"
 	"github.com/prometheus/alertmanager/provider"
+	"github.com/prometheus/alertmanager/types"
+	"github.com/prometheus/common/model"
 )
 
 const alertChannelLength = 200
 
 // Alerts give access to a set of alerts. All methods are goroutine-safe.
 type Alerts struct {
-	db 			*DB
+	db *DB
 
-	mtx 		sync.Mutex
-	listeners	map[int]listeningAlerts
-	next 		int
+	mtx       sync.Mutex
+	listeners map[int]listeningAlerts
+	next      int
 
-	logger 		log.Logger
+	logger log.Logger
 }
 
 type listeningAlerts struct {
-	alerts 	chan *types.Alert
-	done 	chan struct{}
+	alerts chan *types.Alert
+	done   chan struct{}
 }
 
 // NewAlerts returns a new alert provider.
@@ -38,10 +38,10 @@ func NewAlerts(dbconfig *MysqlConfig, m types.Marker, l log.Logger) (*Alerts, er
 	}
 
 	a := &Alerts{
-		db:			db,
-		listeners:	map[int]listeningAlerts{},
-		next:		0,
-		logger:		log.With(l, "component", "provider"),
+		db:        db,
+		listeners: map[int]listeningAlerts{},
+		next:      0,
+		logger:    log.With(l, "component", "provider"),
 	}
 
 	return a, nil
@@ -67,9 +67,9 @@ func (a *Alerts) Subscribe() provider.AlertIterator {
 	defer a.mtx.Unlock()
 
 	var (
-		done = make(chan struct{})
+		done   = make(chan struct{})
 		alerts = a.db.ListUnresolved()
-		ch = make(chan *types.Alert, max(len(alerts), alertChannelLength))
+		ch     = make(chan *types.Alert, max(len(alerts), alertChannelLength))
 	)
 
 	for _, alert := range alerts {
@@ -85,7 +85,7 @@ func (a *Alerts) Subscribe() provider.AlertIterator {
 // GetPending returns an iterator over all the alerts that have pending notifications.
 func (a *Alerts) GetPending() provider.AlertIterator {
 	var (
-		ch = make(chan *types.Alert, alertChannelLength)
+		ch   = make(chan *types.Alert, alertChannelLength)
 		done = make(chan struct{})
 	)
 
@@ -107,7 +107,7 @@ func (a *Alerts) GetPending() provider.AlertIterator {
 // Match returns an iterator over all the alerts with mached labels and tima range.
 func (a *Alerts) Match(labels map[string]string, start time.Time, end time.Time) provider.AlertIterator {
 	var (
-		ch = make(chan *types.Alert, alertChannelLength)
+		ch   = make(chan *types.Alert, alertChannelLength)
 		done = make(chan struct{})
 	)
 

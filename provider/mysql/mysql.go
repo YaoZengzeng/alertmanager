@@ -1,10 +1,10 @@
 package mysql
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
-	"encoding/json"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -12,8 +12,8 @@ import (
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
 
-	"github.com/prometheus/common/model"
 	"github.com/prometheus/alertmanager/types"
+	"github.com/prometheus/common/model"
 )
 
 var (
@@ -22,16 +22,16 @@ var (
 )
 
 type MysqlConfig struct {
-	User		string
-	Password 	string
-	Address		string
-	Port 		string
+	User     string
+	Password string
+	Address  string
+	Port     string
 }
 
 type AlertItem struct {
 	Id           string
 	Alertname    string
-	Severity    string
+	Severity     string
 	Resourcetype string
 	Source       string
 	Start        time.Time
@@ -55,7 +55,7 @@ type AlertItem struct {
 
 	// ExtendLabels is used to match alerts with labels other than fixed ones.
 	// Only used in query.
-	Extend map[string]string
+	ExtendLabels map[string]string
 }
 
 // The alert item stored in db will include `counter` field, so wrap it with AlertDBItem.
@@ -67,7 +67,7 @@ type AlertDBItem struct {
 type DB struct {
 	*sqlx.DB
 
-	logger 		log.Logger
+	logger log.Logger
 }
 
 func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
@@ -119,7 +119,7 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 		return nil, fmt.Errorf("Connect database ALERTDB failed: %v", err)
 	}
 
-	return &DB{DB: db, logger: log.With(l, "component", "mysql"),}, nil
+	return &DB{DB: db, logger: log.With(l, "component", "mysql")}, nil
 }
 
 // queryResolved query the matching alerts from db directly, matched by labels, start and end time.
@@ -129,9 +129,10 @@ func (db *DB) queryResolved(alert AlertDBItem) ([]AlertDBItem, error) {
 					and project REGEXP :project and cluster REGEXP :cluster and namespace REGEXP :namespace and node REGEXP :node and pod REGEXP :pod and deployment REGEXP :deployment and statefulset REGEXP :statefulset`
 	for k, v := range alert.ExtendLabels {
 		// For non-fixed labels, use them directly to match the extend field.
-		schema = schema + fmt.Sprintf(" and extend REGEXP %s and extend %s ", k, v)
+		schema = schema + fmt.Sprintf(` and extend REGEXP '%s' and extend REGEXP '%s'`, k, v)
 	}
-	schema := schema + fmt.Sprintf(`and start >= :start and start <= :end and end >= NOW() ORDER BY start DESC`)
+
+	schema = schema + fmt.Sprintf(` and start >= :start and start <= :end and end < NOW() ORDER BY start DESC`)
 
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)
@@ -153,7 +154,7 @@ func (db *DB) queryLastAlert(alert AlertDBItem) ([]AlertDBItem, error) {
 		return nil, err
 	}
 
-	return res, nil	
+	return res, nil
 }
 
 // queryUnresolved query the unresolved alerts from db directly.
@@ -170,10 +171,7 @@ func (db *DB) queryUnresolved() ([]AlertDBItem, error) {
 // updateAlert update the alert in db directly.
 func (db *DB) updateAlert(alert AlertDBItem) error {
 	_, err := db.NamedExec("UPDATE alerts SET count=:count, start=:start, end=:end WHERE id=:id", alert)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // insertAlert insert the alert to db directly.
@@ -181,10 +179,7 @@ func (db *DB) insertAlert(alert AlertDBItem) error {
 	_, err := db.NamedExec(`INSERT INTO alerts VALUES (:id, :alertname, :severity, :resourcetype, :source, :count,
 							:start, :end, :organization, :project, :cluster, :namespace, :node, :pod, :deployment,
 							:statefulset, :annotations, :extend)`, alert)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 func (db *DB) InsertAlert(alert AlertItem) error {
@@ -252,22 +247,22 @@ func (db *DB) itemToAlert(item AlertDBItem) *types.Alert {
 func (db *DB) alertToItem(alert *types.Alert) AlertDBItem {
 	item := AlertDBItem{
 		AlertItem: AlertItem{
-			Id:	alert.Fingerprint().String(),
-			Alertname:		string(alert.Labels[model.LabelName("alertname")]),
-			Severity:		string(alert.Labels[model.LabelName("severity")]),
-			Resourcetype:	string(alert.Labels[model.LabelName("resourcetype")]),
-			Source:			string(alert.Labels[model.LabelName("source")]),
-			Start:			alert.StartsAt,
-			End:			alert.EndsAt,
+			Id:           alert.Fingerprint().String(),
+			Alertname:    string(alert.Labels[model.LabelName("alertname")]),
+			Severity:     string(alert.Labels[model.LabelName("severity")]),
+			Resourcetype: string(alert.Labels[model.LabelName("resourcetype")]),
+			Source:       string(alert.Labels[model.LabelName("source")]),
+			Start:        alert.StartsAt,
+			End:          alert.EndsAt,
 
-			Organization:	string(alert.Labels[model.LabelName("organization")]),
-			Project:		string(alert.Labels[model.LabelName("project")]),
-			Cluster:		string(alert.Labels[model.LabelName("cluster")]),
-			Namespace:		string(alert.Labels[model.LabelName("namespace")]),
-			Node:			string(alert.Labels[model.LabelName("node")]),
-			Pod:			string(alert.Labels[model.LabelName("pod")]),
-			Deployment:		string(alert.Labels[model.LabelName("deployment")]),
-			Statefulset:	string(alert.Labels[model.LabelName("statefulset")]),
+			Organization: string(alert.Labels[model.LabelName("organization")]),
+			Project:      string(alert.Labels[model.LabelName("project")]),
+			Cluster:      string(alert.Labels[model.LabelName("cluster")]),
+			Namespace:    string(alert.Labels[model.LabelName("namespace")]),
+			Node:         string(alert.Labels[model.LabelName("node")]),
+			Pod:          string(alert.Labels[model.LabelName("pod")]),
+			Deployment:   string(alert.Labels[model.LabelName("deployment")]),
+			Statefulset:  string(alert.Labels[model.LabelName("statefulset")]),
 		},
 	}
 
@@ -298,21 +293,21 @@ func (db *DB) alertToItem(alert *types.Alert) AlertDBItem {
 func formMatcher(labels map[string]string, start time.Time, end time.Time) AlertDBItem {
 	item := AlertDBItem{
 		AlertItem: AlertItem{
-			Alertname:		labels["alertname"],
-			Severity:		labels["severity"],
-			Resourcetype:	labels["resourcetype"],
-			Source:			labels["source"],
-			Start:			start,
-			End:			end,
+			Alertname:    labels["alertname"],
+			Severity:     labels["severity"],
+			Resourcetype: labels["resourcetype"],
+			Source:       labels["source"],
+			Start:        start,
+			End:          end,
 
-			Organization:	labels["organization"],
-			Project:		labels["project"],
-			Cluster:		labels["cluster"],
-			Namespace:		labels["namespace"],
-			Node:			labels["node"],
-			Pod:			labels["pod"],
-			Deployment:		labels["deployment"],
-			Statefulset:	labels["statefulset"],
+			Organization: labels["organization"],
+			Project:      labels["project"],
+			Cluster:      labels["cluster"],
+			Namespace:    labels["namespace"],
+			Node:         labels["node"],
+			Pod:          labels["pod"],
+			Deployment:   labels["deployment"],
+			Statefulset:  labels["statefulset"],
 		},
 	}
 
@@ -322,7 +317,7 @@ func formMatcher(labels map[string]string, start time.Time, end time.Time) Alert
 		delete(labels, key)
 	}
 
-	item.ExtendLabels
+	item.ExtendLabels = labels
 
 	return item
 }
