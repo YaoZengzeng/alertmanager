@@ -2,6 +2,7 @@ package mysql
 
 import (
 	"sync"
+	"time"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -92,6 +93,28 @@ func (a *Alerts) GetPending() provider.AlertIterator {
 		defer close(ch)
 
 		for _, a := range a.db.ListUnresolved() {
+			select {
+			case ch <- a:
+			case <-done:
+				return
+			}
+		}
+	}()
+
+	return provider.NewAlertIterator(ch, done, nil)
+}
+
+// Match returns an iterator over all the alerts with mached labels and tima range.
+func (a *Alerts) Match(labels map[string]string, start time.Time, end time.Time) provider.AlertIterator {
+	var (
+		ch = make(chan *types.Alert, alertChannelLength)
+		done = make(chan struct{})
+	)
+
+	go func() {
+		defer close(ch)
+
+		for _, a := range a.db.ListMatched(labels, start, end) {
 			select {
 			case ch <- a:
 			case <-done:

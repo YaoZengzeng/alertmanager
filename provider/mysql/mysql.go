@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"time"
+	"encoding/json"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/jmoiron/sqlx"
@@ -33,7 +34,6 @@ type AlertItem struct {
 	Severity    string
 	Resourcetype string
 	Source       string
-	Info         string
 	Start        time.Time
 	End          time.Time
 
@@ -46,6 +46,9 @@ type AlertItem struct {
 	Pod          string
 	Deployment   string
 	Statefulset  string
+
+	// All annotations are marshalled into this field.
+	Annotations string
 
 	// Extend fileds, all other labels will be marshalled into this field.
 	Extend string
@@ -88,7 +91,6 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 			severity text,
 			resourcetype text,
 			source text,
-			info text,
 			count integer,
 			start timestamp,
 			end timestamp,
@@ -100,6 +102,7 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 			pod text,
 			deployment text,
 			statefulset text,
+			annotations text,
 			extend text);`
 	_, err = db.Exec(schema)
 	if err != nil {
@@ -115,11 +118,12 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 	return &DB{DB: db, logger: log.With(l, "component", "mysql"),}, nil
 }
 
-// queryAlert query the matching alerts from db directly.
-func (db *DB) queryAlert(alert AlertDBItem, limit int) ([]AlertDBItem, error) {
+// queryAlerts query the matching alerts from db directly, matched by labels, start and end time.
+func (db *DB) queryAlerts(alert AlertDBItem) ([]AlertDBItem, error) {
+	// Get alerts with matched labels and start time falls between start and end.
 	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE alertname REGEXP :alertname and severity REGEXP :severity and resourcetype REGEXP :resourcetype and source REGEXP :source and organization REGEXP :organization
 					and project REGEXP :project and cluster REGEXP :cluster and namespace REGEXP :namespace and node REGEXP :node and pod REGEXP :pod and deployment REGEXP :deployment and statefulset REGEXP :statefulset
-					and extend REGEXP :extend ORDER BY start DESC LIMIT %d`, limit)
+					and extend REGEXP :extend and start >= :start and start <= :end ORDER BY start DESC`)
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)
 	err = nstmt.Select(&res, alert)
@@ -128,6 +132,19 @@ func (db *DB) queryAlert(alert AlertDBItem, limit int) ([]AlertDBItem, error) {
 	}
 
 	return res, nil
+}
+
+// queryLastAlert query the matching alert from db directly, matched by id.
+func (db *DB) queryLastAlert(alert AlertDBItem) ([]AlertDBItem, error) {
+	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE id REGEXP :id ORDER BY start DESC LIMIT 1`)
+	res := []AlertDBItem{}
+	nstmt, err := db.PrepareNamed(schema)
+	err = nstmt.Select(&res, alert)
+	if err != nil {
+		return nil, err
+	}
+
+	return res, nil	
 }
 
 // queryUnresolved query the unresolved alerts from db directly.
@@ -152,7 +169,9 @@ func (db *DB) updateAlert(alert AlertDBItem) error {
 
 // insertAlert insert the alert to db directly.
 func (db *DB) insertAlert(alert AlertDBItem) error {
-	_, err := db.NamedExec("INSERT INTO alerts VALUES (:id, :alertname, :severity, :resourcetype, :source, :info, :count, :start, :end, :organization, :project, :cluster, :namespace, :node, :pod, :deployment, :statefulset, :extend)", alert)
+	_, err := db.NamedExec(`INSERT INTO alerts VALUES (:id, :alertname, :severity, :resourcetype, :source, :count,
+							:start, :end, :organization, :project, :cluster, :namespace, :node, :pod, :deployment,
+							:statefulset, :annotations, :extend)`, alert)
 	if err != nil {
 		return err
 	}
@@ -177,13 +196,12 @@ func (db *DB) InsertAlert(alert AlertItem) error {
 	return db.updateAlert(item)
 }
 
-func itemToAlert(item AlertDBItem) *types.Alert {
+func (db *DB) itemToAlert(item AlertDBItem) *types.Alert {
 	res := &types.Alert{Alert: model.Alert{Labels: model.LabelSet{}, Annotations: model.LabelSet{}}}
 	res.Labels[model.LabelName("alertname")] = model.LabelValue(item.Alertname)
 	res.Labels[model.LabelName("severity")] = model.LabelValue(item.Severity)
 	res.Labels[model.LabelName("resourcetype")] = model.LabelValue(item.Resourcetype)
 	res.Labels[model.LabelName("source")] = model.LabelValue(item.Source)
-	res.Annotations[model.LabelName("info")] = model.LabelValue(item.Info)
 
 	res.StartsAt = item.Start
 	res.EndsAt = item.End
@@ -200,16 +218,29 @@ func itemToAlert(item AlertDBItem) *types.Alert {
 	converse("namespace", item.Namespace)
 	converse("node", item.Node)
 	converse("pod", item.Pod)
-	converse("Pod", item.Pod)
 	converse("deployment", item.Deployment)
 	converse("statefulset", item.Statefulset)
 
-	// TODO: converse extend field.
+	err := json.Unmarshal([]byte(item.Annotations), &res.Annotations)
+	if err != nil {
+		// TODO: handle the unmarshal error more correctly.
+		level.Error(db.logger).Log("msg", "error on unmarshal annotations of alert", "err", err)
+	}
+
+	labels := model.LabelSet{}
+	err = json.Unmarshal([]byte(item.Extend), &labels)
+	if err != nil {
+		level.Error(db.logger).Log("msg", "error on unmarshal extend of alert", "err", err)
+	}
+
+	for k, v := range labels {
+		res.Labels[k] = v
+	}
 
 	return res
 }
 
-func alertToItem(alert *types.Alert) AlertDBItem {
+func (db *DB) alertToItem(alert *types.Alert) AlertDBItem {
 	item := AlertDBItem{
 		AlertItem: AlertItem{
 			Id:	alert.Fingerprint().String(),
@@ -217,7 +248,6 @@ func alertToItem(alert *types.Alert) AlertDBItem {
 			Severity:		string(alert.Labels[model.LabelName("severity")]),
 			Resourcetype:	string(alert.Labels[model.LabelName("resourcetype")]),
 			Source:			string(alert.Labels[model.LabelName("source")]),
-			Info:			string(alert.Annotations[model.LabelName("info")]),
 			Start:			alert.StartsAt,
 			End:			alert.EndsAt,
 
@@ -229,31 +259,72 @@ func alertToItem(alert *types.Alert) AlertDBItem {
 			Pod:			string(alert.Labels[model.LabelName("pod")]),
 			Deployment:		string(alert.Labels[model.LabelName("deployment")]),
 			Statefulset:	string(alert.Labels[model.LabelName("statefulset")]),
-
-			// TODO: fullfill extend field.
 		},
 	}
 
-	if len(alert.Labels[model.LabelName("pod")]) == 0 && len(alert.Labels[model.LabelName("Pod")]) != 0 {
-		item.Pod = string(alert.Labels[model.LabelName("Pod")])
+	annotations, err := json.Marshal(alert.Annotations)
+	if err != nil {
+		// TODO: handle the marshal error more correctly.
+		level.Error(db.logger).Log("msg", "error on marshal annotations of alert", "err", err)
+		annotations = []byte{}
+	}
+	item.Annotations = string(annotations)
+
+	// Remove the already known field from alerts directly.
+	// TODO: more elegant way?
+	for _, key := range []string{"alertname", "severity", "resourcetype", "source", "organization", "project", "cluster", "namespace", "node", "pod", "deployment", "statefulset"} {
+		delete(alert.Labels, model.LabelName(key))
+	}
+
+	extend, err := json.Marshal(alert.Labels)
+	if err != nil {
+		level.Error(db.logger).Log("msg", "error on marshal extend labels of alert", "err", err)
+		extend = []byte{}
+	}
+	item.Extend = string(extend)
+
+	return item
+}
+
+func formMatcher(labels map[string]string, start time.Time, end time.Time) AlertDBItem {
+	item := AlertDBItem{
+		AlertItem: AlertItem{
+			Alertname:		labels["alertname"],
+			Severity:		labels["severity"],
+			Resourcetype:	labels["resourcetype"],
+			Source:			labels["source"],
+			Start:			start,
+			End:			end,
+
+			Organization:	labels["organization"],
+			Project:		labels["project"],
+			Cluster:		labels["cluster"],
+			Namespace:		labels["namespace"],
+			Node:			labels["node"],
+			Pod:			labels["pod"],
+			Deployment:		labels["deployment"],
+			Statefulset:	labels["statefulset"],
+
+			// TODO: form the extend field matcher.
+		},
 	}
 
 	return item
 }
 
 func (db *DB) GetLastAlert(fp model.Fingerprint) (*types.Alert, error) {
-	alert := AlertDBItem{AlertItem: AlertItem{Id: fp.String()}}
-	alerts, err := db.queryAlert(alert, 1)
+	matcher := AlertDBItem{AlertItem: AlertItem{Id: fp.String()}}
+	items, err := db.queryLastAlert(matcher)
 	if err != nil {
 		return nil, err
 	}
 
 	// Just double check to avoid panic.
-	if len(alerts) < 1 {
+	if len(items) < 1 {
 		return nil, ErrNotFound
 	}
 
-	return itemToAlert(alerts[0]), nil
+	return db.itemToAlert(items[0]), nil
 }
 
 func (db *DB) Set(a *types.Alert) error {
@@ -269,7 +340,21 @@ func (db *DB) ListUnresolved() []*types.Alert {
 
 	res := []*types.Alert{}
 	for _, item := range items {
-		res = append(res, itemToAlert(item))
+		res = append(res, db.itemToAlert(item))
+	}
+
+	return res
+}
+
+func (db *DB) ListMatched(labels map[string]string, start time.Time, end time.Time) []*types.Alert {
+	items, err := db.queryAlerts(formMatcher(labels, start, end))
+	if err != nil {
+		return nil, err
+	}
+
+	res := []*types.Alert{}
+	for _, item := range items {
+		res = append(res, db.itemToAlert(item))
 	}
 
 	return res

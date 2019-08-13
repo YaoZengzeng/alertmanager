@@ -15,6 +15,7 @@ package provider
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/prometheus/common/model"
 
@@ -81,6 +82,8 @@ type Alerts interface {
 	// GetPending returns an iterator over all alerts that have
 	// pending notifications.
 	GetPending() AlertIterator
+	// Match returns the alerts with matched labels and time range.
+	Match(labels map[string]string, start time.Time, end time.Time) AlertIterator
 	// Get returns the alert for a given fingerprint.
 	Get(model.Fingerprint) (*types.Alert, error)
 	// Put adds the given alert to the set.
