@@ -246,9 +246,9 @@ func run() int {
 	defer alerts.Close()*/
 
 	dbconfig := &mysql.MysqlConfig{
-		User:		"root",
+		User:		"",
 		Password:	"",
-		Address:	"",
+		Address:	"172.16.0.5",
 		Port:		"3306",
 	}
 

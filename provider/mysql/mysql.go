@@ -30,7 +30,7 @@ type MysqlConfig struct {
 type AlertItem struct {
 	Id           string
 	Alertname    string
-	Serverity    string
+	Severity    string
 	Resourcetype string
 	Source       string
 	Info         string
@@ -64,18 +64,19 @@ type DB struct {
 }
 
 func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
+	// Create alertdb and alerts table if necessary.
 	db, err := sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/mysql?parseTime=true", config.User, config.Password, config.Address, config.Port))
 	if err != nil {
 		return nil, fmt.Errorf("Connect database failed: %v", err)
 	}
 
-	schema := `CREATE DATABASE IF NOT EXISTS alertdb;`
+	schema := `CREATE DATABASE IF NOT EXISTS ALERTDB;`
 	_, err = db.Exec(schema)
 	if err != nil {
 		return nil, fmt.Errorf("Create database alertdb failed: %v", err)
 	}
 
-	schema = `USE alertdb;`
+	schema = `USE ALERTDB;`
 	_, err = db.Exec(schema)
 	if err != nil {
 		return nil, fmt.Errorf("Change to database alertdb failed: %v", err)
@@ -84,7 +85,7 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 	schema = `CREATE TABLE IF NOT EXISTS alerts (
 			id text,
 			alertname text,
-			serverity text,
+			severity text,
 			resourcetype text,
 			source text,
 			info text,
@@ -105,12 +106,18 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 		return nil, fmt.Errorf("Create table failed: %v", err)
 	}
 
+	// Connect to the alertdb.
+	db, err = sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/ALERTDB?parseTime=true", config.User, config.Password, config.Address, config.Port))
+	if err != nil {
+		return nil, fmt.Errorf("Connect database ALERTDB failed: %v", err)
+	}
+
 	return &DB{DB: db, logger: log.With(l, "component", "mysql"),}, nil
 }
 
 // queryAlert query the matching alerts from db directly.
 func (db *DB) queryAlert(alert AlertDBItem, limit int) ([]AlertDBItem, error) {
-	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE alertname REGEXP :alertname and serverity REGEXP :serverity and resourcetype REGEXP :resourcetype and source REGEXP :source and organization REGEXP :organization
+	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE alertname REGEXP :alertname and severity REGEXP :severity and resourcetype REGEXP :resourcetype and source REGEXP :source and organization REGEXP :organization
 					and project REGEXP :project and cluster REGEXP :cluster and namespace REGEXP :namespace and node REGEXP :node and pod REGEXP :pod and deployment REGEXP :deployment and statefulset REGEXP :statefulset
 					and extend REGEXP :extend ORDER BY start DESC LIMIT %d`, limit)
 	res := []AlertDBItem{}
@@ -145,7 +152,7 @@ func (db *DB) updateAlert(alert AlertDBItem) error {
 
 // insertAlert insert the alert to db directly.
 func (db *DB) insertAlert(alert AlertDBItem) error {
-	_, err := db.NamedExec("INSERT INTO alerts VALUES (:id, :alertname, :serverity, :resourcetype, :source, :info, :count, :start, :end, :organization, :project, :cluster, :namespace, :node, :pod, :deployment, :statefulset, :extend)", alert)
+	_, err := db.NamedExec("INSERT INTO alerts VALUES (:id, :alertname, :severity, :resourcetype, :source, :info, :count, :start, :end, :organization, :project, :cluster, :namespace, :node, :pod, :deployment, :statefulset, :extend)", alert)
 	if err != nil {
 		return err
 	}
@@ -173,7 +180,7 @@ func (db *DB) InsertAlert(alert AlertItem) error {
 func itemToAlert(item AlertDBItem) *types.Alert {
 	res := &types.Alert{Alert: model.Alert{Labels: model.LabelSet{}, Annotations: model.LabelSet{}}}
 	res.Labels[model.LabelName("alertname")] = model.LabelValue(item.Alertname)
-	res.Labels[model.LabelName("serverity")] = model.LabelValue(item.Serverity)
+	res.Labels[model.LabelName("severity")] = model.LabelValue(item.Severity)
 	res.Labels[model.LabelName("resourcetype")] = model.LabelValue(item.Resourcetype)
 	res.Labels[model.LabelName("source")] = model.LabelValue(item.Source)
 	res.Annotations[model.LabelName("info")] = model.LabelValue(item.Info)
@@ -193,6 +200,7 @@ func itemToAlert(item AlertDBItem) *types.Alert {
 	converse("namespace", item.Namespace)
 	converse("node", item.Node)
 	converse("pod", item.Pod)
+	converse("Pod", item.Pod)
 	converse("deployment", item.Deployment)
 	converse("statefulset", item.Statefulset)
 
@@ -202,11 +210,11 @@ func itemToAlert(item AlertDBItem) *types.Alert {
 }
 
 func alertToItem(alert *types.Alert) AlertDBItem {
-	return AlertDBItem{
+	item := AlertDBItem{
 		AlertItem: AlertItem{
 			Id:	alert.Fingerprint().String(),
 			Alertname:		string(alert.Labels[model.LabelName("alertname")]),
-			Serverity:		string(alert.Labels[model.LabelName("serverity")]),
+			Severity:		string(alert.Labels[model.LabelName("severity")]),
 			Resourcetype:	string(alert.Labels[model.LabelName("resourcetype")]),
 			Source:			string(alert.Labels[model.LabelName("source")]),
 			Info:			string(alert.Annotations[model.LabelName("info")]),
@@ -225,6 +233,12 @@ func alertToItem(alert *types.Alert) AlertDBItem {
 			// TODO: fullfill extend field.
 		},
 	}
+
+	if len(alert.Labels[model.LabelName("pod")]) == 0 && len(alert.Labels[model.LabelName("Pod")]) != 0 {
+		item.Pod = string(alert.Labels[model.LabelName("Pod")])
+	}
+
+	return item
 }
 
 func (db *DB) GetLastAlert(fp model.Fingerprint) (*types.Alert, error) {
