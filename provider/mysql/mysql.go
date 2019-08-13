@@ -68,7 +68,7 @@ type DB struct {
 
 func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 	// Create alertdb and alerts table if necessary.
-	db, err := sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/mysql?parseTime=true", config.User, config.Password, config.Address, config.Port))
+	db, err := sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/mysql?parseTime=true&loc=Local", config.User, config.Password, config.Address, config.Port))
 	if err != nil {
 		return nil, fmt.Errorf("Connect database failed: %v", err)
 	}
@@ -110,7 +110,7 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 	}
 
 	// Connect to the alertdb.
-	db, err = sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/ALERTDB?parseTime=true", config.User, config.Password, config.Address, config.Port))
+	db, err = sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/ALERTDB?parseTime=true&loc=Local", config.User, config.Password, config.Address, config.Port))
 	if err != nil {
 		return nil, fmt.Errorf("Connect database ALERTDB failed: %v", err)
 	}
@@ -160,7 +160,7 @@ func (db *DB) queryUnresolved() ([]AlertDBItem, error) {
 
 // updateAlert update the alert in db directly.
 func (db *DB) updateAlert(alert AlertDBItem) error {
-	_, err := db.NamedExec("UPDATE alerts SET count=:count, end=:end WHERE id=:id", alert)
+	_, err := db.NamedExec("UPDATE alerts SET count=:count, start=:start, end=:end WHERE id=:id", alert)
 	if err != nil {
 		return err
 	}
@@ -328,7 +328,7 @@ func (db *DB) GetLastAlert(fp model.Fingerprint) (*types.Alert, error) {
 }
 
 func (db *DB) Set(a *types.Alert) error {
-	return db.InsertAlert(alertToItem(a).AlertItem)
+	return db.InsertAlert(db.alertToItem(a).AlertItem)
 }
 
 func (db *DB) ListUnresolved() []*types.Alert {
@@ -349,7 +349,8 @@ func (db *DB) ListUnresolved() []*types.Alert {
 func (db *DB) ListMatched(labels map[string]string, start time.Time, end time.Time) []*types.Alert {
 	items, err := db.queryAlerts(formMatcher(labels, start, end))
 	if err != nil {
-		return nil, err
+		level.Error(db.logger).Log("msg", "error on query alerts", "err", err)
+		return nil
 	}
 
 	res := []*types.Alert{}
