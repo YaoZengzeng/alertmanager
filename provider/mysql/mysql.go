@@ -52,6 +52,10 @@ type AlertItem struct {
 
 	// Extend fileds, all other labels will be marshalled into this field.
 	Extend string
+
+	// ExtendLabels is used to match alerts with labels other than fixed ones.
+	// Only used in query.
+	Extend map[string]string
 }
 
 // The alert item stored in db will include `counter` field, so wrap it with AlertDBItem.
@@ -118,12 +122,17 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 	return &DB{DB: db, logger: log.With(l, "component", "mysql"),}, nil
 }
 
-// queryAlerts query the matching alerts from db directly, matched by labels, start and end time.
-func (db *DB) queryAlerts(alert AlertDBItem) ([]AlertDBItem, error) {
+// queryResolved query the matching alerts from db directly, matched by labels, start and end time.
+func (db *DB) queryResolved(alert AlertDBItem) ([]AlertDBItem, error) {
 	// Get alerts with matched labels and start time falls between start and end.
-	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE alertname REGEXP :alertname and severity REGEXP :severity and resourcetype REGEXP :resourcetype and source REGEXP :source and organization REGEXP :organization
-					and project REGEXP :project and cluster REGEXP :cluster and namespace REGEXP :namespace and node REGEXP :node and pod REGEXP :pod and deployment REGEXP :deployment and statefulset REGEXP :statefulset
-					and extend REGEXP :extend and start >= :start and start <= :end ORDER BY start DESC`)
+	schema := `SELECT * FROM alerts WHERE alertname REGEXP :alertname and severity REGEXP :severity and resourcetype REGEXP :resourcetype and source REGEXP :source and organization REGEXP :organization
+					and project REGEXP :project and cluster REGEXP :cluster and namespace REGEXP :namespace and node REGEXP :node and pod REGEXP :pod and deployment REGEXP :deployment and statefulset REGEXP :statefulset`
+	for k, v := range alert.ExtendLabels {
+		// For non-fixed labels, use them directly to match the extend field.
+		schema = schema + fmt.Sprintf(" and extend REGEXP %s and extend %s ", k, v)
+	}
+	schema := schema + fmt.Sprintf(`and start >= :start and start <= :end and end >= NOW() ORDER BY start DESC`)
+
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)
 	err = nstmt.Select(&res, alert)
@@ -304,10 +313,16 @@ func formMatcher(labels map[string]string, start time.Time, end time.Time) Alert
 			Pod:			labels["pod"],
 			Deployment:		labels["deployment"],
 			Statefulset:	labels["statefulset"],
-
-			// TODO: form the extend field matcher.
 		},
 	}
+
+	// Remove the already known field from labels directly.
+	// TODO: more elegant way?
+	for _, key := range []string{"alertname", "severity", "resourcetype", "source", "organization", "project", "cluster", "namespace", "node", "pod", "deployment", "statefulset"} {
+		delete(labels, key)
+	}
+
+	item.ExtendLabels
 
 	return item
 }
@@ -347,7 +362,7 @@ func (db *DB) ListUnresolved() []*types.Alert {
 }
 
 func (db *DB) ListMatched(labels map[string]string, start time.Time, end time.Time) []*types.Alert {
-	items, err := db.queryAlerts(formMatcher(labels, start, end))
+	items, err := db.queryResolved(formMatcher(labels, start, end))
 	if err != nil {
 		level.Error(db.logger).Log("msg", "error on query alerts", "err", err)
 		return nil

@@ -22,6 +22,8 @@ import (
 	"sort"
 	"sync"
 	"time"
+	"strconv"
+	"math"
 
 	"github.com/go-kit/kit/log"
 	"github.com/go-kit/kit/log/level"
@@ -145,6 +147,8 @@ func (api *API) Register(r *route.Router) {
 	r.Get("/alerts", wrap(api.listAlerts))
 	r.Post("/alerts", wrap(api.addAlerts))
 
+	r.Get("/resolved", wrap(api.listResolvedAlerts))
+
 	r.Get("/silences", wrap(api.listSilences))
 	r.Post("/silences", wrap(api.setSilence))
 	r.Get("/silence/:sid", wrap(api.getSilence))
@@ -241,6 +245,75 @@ func getClusterStatus(p *cluster.Peer) *clusterStatus {
 		})
 	}
 	return s
+}
+
+func parseTime(s string) (time.Time, error) {
+	if t, err := strconv.ParseFloat(s, 64); err == nil {
+		s, ns := math.Modf(t)
+		ns = math.Round(ns*1000) / 1000
+		return time.Unix(int64(s), int64(ns*float64(time.Second))), nil
+	}
+	if t, err := time.Parse(time.RFC3339Nano, s); err == nil {
+		return t, nil
+	}
+	return time.Time{}, fmt.Errorf("cannot parse %q to a valid timestamp", s)
+}
+
+func (api *API) listResolvedAlerts(w http.ResponseWriter, r *http.Request) {
+	var (
+		err 		error
+		// Initialize result slice to prevent api returning `null` when there
+		// are no alerts present
+		res 		= []*Alert{}
+		matchers 	= []*labels.Matcher{}
+	)
+
+	// For resolved alerts, "=~" and "!~" are not needed, "=" means regex already.
+	if filter := r.FormValue("filter"); filter != "" {
+		matchers, err = parse.Matchers(filter)
+		if err != nil {
+			api.respondError(w, apiError{
+				typ: errorBadData,
+				err: err,
+			}, nil)
+			return
+		}
+	}
+
+	labels := map[string]string{}
+	for i, _ := range matchers {
+		labels[matchers[i].Name] = matchers[i].Value
+	}
+
+
+	var start, end time.Time
+	if start, end = parseTime(r.FormValue("start")); err != nil {
+		api.respondError(w, apiError{
+			typ: errorBadData,
+			err: err,
+		}, nil)
+		return
+	}
+
+	if end, err = parseTime(r.FormValue("end")); err != nil {
+		api.respondError(w, apiError{
+			typ: errorBadData,
+			err: err,
+		}, nil)
+		return
+	}
+
+	alerts := api.alerts.Match(labels, start, end)
+	defer alerts.Close()
+
+	for a := range alerts.Next() {
+		alert := &Alert{
+			Alert:	&a.Alert,
+		}
+		res = append(res, alert)
+	}
+
+	api.respond(w, res)
 }
 
 func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
