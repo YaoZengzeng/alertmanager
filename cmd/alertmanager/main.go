@@ -245,11 +245,27 @@ func run() int {
 	}
 	defer alerts.Close()*/
 
+	MYSQL_DB := os.Getenv("MYSQL_DB")
+	MYSQL_IP := os.Getenv("MYSQL_IP")
+	MYSQL_PORT := os.Getenv("MYSQL_PORT")
+	MYSQL_USER := os.Getenv("MYSQL_USER")
+	MYSQL_PWD := os.Getenv("MYSQL_PWD")
+
+	if (MYSQL_DB == "") || (MYSQL_IP == "") || (MYSQL_PORT == "") || (MYSQL_USER == "") || (MYSQL_PWD == "") {
+		level.Error(logger).Log("err", fmt.Errorf("Require database configuration in env"))
+		return 1
+	}
+
+	os.Unsetenv("MYSQL_PWD")
+	os.Unsetenv("MYSQL_USER")
+	os.Unsetenv("MYSQL_DB")
+
 	dbconfig := &mysql.MysqlConfig{
-		User:		"",
-		Password:	"",
-		Address:	"172.16.0.5",
-		Port:		"3306",
+		Db:		MYSQL_DB,
+		Address:	MYSQL_IP,
+		Port:		MYSQL_PORT,
+		User:		MYSQL_USER,
+		Password:	MYSQL_PWD,
 	}
 
 	alerts, err := mysql.NewAlerts(dbconfig, marker, logger)

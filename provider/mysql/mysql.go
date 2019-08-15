@@ -22,6 +22,7 @@ var (
 )
 
 type MysqlConfig struct {
+	Db	 string
 	User     string
 	Password string
 	Address  string
@@ -71,25 +72,12 @@ type DB struct {
 }
 
 func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
-	// Create alertdb and alerts table if necessary.
-	db, err := sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/mysql?parseTime=true&loc=Local", config.User, config.Password, config.Address, config.Port))
+	db, err := sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/%s?parseTime=true&loc=Local", config.User, config.Password, config.Address, config.Port, config.Db))
 	if err != nil {
-		return nil, fmt.Errorf("Connect database failed: %v", err)
+		return nil, fmt.Errorf("Connect database failed")
 	}
 
-	schema := `CREATE DATABASE IF NOT EXISTS ALERTDB;`
-	_, err = db.Exec(schema)
-	if err != nil {
-		return nil, fmt.Errorf("Create database alertdb failed: %v", err)
-	}
-
-	schema = `USE ALERTDB;`
-	_, err = db.Exec(schema)
-	if err != nil {
-		return nil, fmt.Errorf("Change to database alertdb failed: %v", err)
-	}
-
-	schema = `CREATE TABLE IF NOT EXISTS alerts (
+	schema := `CREATE TABLE IF NOT EXISTS alerts (
 			id text,
 			alertname text,
 			severity text,
@@ -111,12 +99,6 @@ func initializeMysql(config *MysqlConfig, l log.Logger) (*DB, error) {
 	_, err = db.Exec(schema)
 	if err != nil {
 		return nil, fmt.Errorf("Create table failed: %v", err)
-	}
-
-	// Connect to the alertdb.
-	db, err = sqlx.Connect("mysql", fmt.Sprintf("%s:%s@(%s:%s)/ALERTDB?parseTime=true&loc=Local", config.User, config.Password, config.Address, config.Port))
-	if err != nil {
-		return nil, fmt.Errorf("Connect database ALERTDB failed: %v", err)
 	}
 
 	return &DB{DB: db, logger: log.With(l, "component", "mysql")}, nil
@@ -216,14 +198,14 @@ func (db *DB) itemToAlert(item AlertDBItem) *types.Alert {
 		}
 	}
 
-	converse("organization", item.Organization)
-	converse("project", item.Project)
-	converse("cluster", item.Cluster)
-	converse("namespace", item.Namespace)
-	converse("node", item.Node)
-	converse("pod", item.Pod)
-	converse("deployment", item.Deployment)
-	converse("statefulset", item.Statefulset)
+	converse("Organization", item.Organization)
+	converse("Project", item.Project)
+	converse("Cluster", item.Cluster)
+	converse("Namespace", item.Namespace)
+	converse("Node", item.Node)
+	converse("Pod", item.Pod)
+	converse("Deployment", item.Deployment)
+	converse("Statefulset", item.Statefulset)
 
 	err := json.Unmarshal([]byte(item.Annotations), &res.Annotations)
 	if err != nil {
@@ -255,14 +237,14 @@ func (db *DB) alertToItem(alert *types.Alert) AlertDBItem {
 			Start:        alert.StartsAt,
 			End:          alert.EndsAt,
 
-			Organization: string(alert.Labels[model.LabelName("organization")]),
-			Project:      string(alert.Labels[model.LabelName("project")]),
-			Cluster:      string(alert.Labels[model.LabelName("cluster")]),
-			Namespace:    string(alert.Labels[model.LabelName("namespace")]),
-			Node:         string(alert.Labels[model.LabelName("node")]),
-			Pod:          string(alert.Labels[model.LabelName("pod")]),
-			Deployment:   string(alert.Labels[model.LabelName("deployment")]),
-			Statefulset:  string(alert.Labels[model.LabelName("statefulset")]),
+			Organization: string(alert.Labels[model.LabelName("Organization")]),
+			Project:      string(alert.Labels[model.LabelName("Project")]),
+			Cluster:      string(alert.Labels[model.LabelName("Cluster")]),
+			Namespace:    string(alert.Labels[model.LabelName("Namespace")]),
+			Node:         string(alert.Labels[model.LabelName("Node")]),
+			Pod:          string(alert.Labels[model.LabelName("Pod")]),
+			Deployment:   string(alert.Labels[model.LabelName("Deployment")]),
+			Statefulset:  string(alert.Labels[model.LabelName("Statefulset")]),
 		},
 	}
 
@@ -276,7 +258,7 @@ func (db *DB) alertToItem(alert *types.Alert) AlertDBItem {
 
 	// Remove the already known field from alerts directly.
 	// TODO: more elegant way?
-	for _, key := range []string{"alertname", "severity", "resourcetype", "source", "organization", "project", "cluster", "namespace", "node", "pod", "deployment", "statefulset"} {
+	for _, key := range []string{"alertname", "severity", "resourcetype", "source", "Organization", "Project", "Cluster", "Namespace", "Node", "Pod", "Deployment", "Statefulset"} {
 		delete(alert.Labels, model.LabelName(key))
 	}
 
@@ -300,20 +282,20 @@ func formMatcher(labels map[string]string, start time.Time, end time.Time) Alert
 			Start:        start,
 			End:          end,
 
-			Organization: labels["organization"],
-			Project:      labels["project"],
-			Cluster:      labels["cluster"],
-			Namespace:    labels["namespace"],
-			Node:         labels["node"],
-			Pod:          labels["pod"],
-			Deployment:   labels["deployment"],
-			Statefulset:  labels["statefulset"],
+			Organization: labels["Organization"],
+			Project:      labels["Project"],
+			Cluster:      labels["Cluster"],
+			Namespace:    labels["Namespace"],
+			Node:         labels["Node"],
+			Pod:          labels["Pod"],
+			Deployment:   labels["Deployment"],
+			Statefulset:  labels["Statefulset"],
 		},
 	}
 
 	// Remove the already known field from labels directly.
 	// TODO: more elegant way?
-	for _, key := range []string{"alertname", "severity", "resourcetype", "source", "organization", "project", "cluster", "namespace", "node", "pod", "deployment", "statefulset"} {
+	for _, key := range []string{"alertname", "severity", "resourcetype", "source", "Organization", "Project", "Cluster", "Namespace", "Node", "Pod", "Deployment", "Statefulset"} {
 		delete(labels, key)
 	}
 
