@@ -22,7 +22,7 @@ var (
 )
 
 type MysqlConfig struct {
-	Db	 string
+	Db       string
 	User     string
 	Password string
 	Address  string
@@ -114,7 +114,7 @@ func (db *DB) queryResolved(alert AlertDBItem) ([]AlertDBItem, error) {
 		schema = schema + fmt.Sprintf(` and extend REGEXP '%s' and extend REGEXP '%s'`, k, v)
 	}
 
-	schema = schema + fmt.Sprintf(` and start >= :start and start <= :end and end < NOW() ORDER BY start DESC`)
+	schema = schema + fmt.Sprintf(` and start >= :start and start <= :end and end < UTC_TIMESTAMP() ORDER BY start DESC`)
 
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)

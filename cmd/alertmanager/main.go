@@ -103,9 +103,9 @@ func run() int {
 	}
 
 	var (
-		configFile      = kingpin.Flag("config.file", "Alertmanager configuration file name.").Default("alertmanager.yml").String()
-		dataDir         = kingpin.Flag("storage.path", "Base path for data storage.").Default("data/").String()
-		retention       = kingpin.Flag("data.retention", "How long to keep data for.").Default("120h").Duration()
+		configFile = kingpin.Flag("config.file", "Alertmanager configuration file name.").Default("alertmanager.yml").String()
+		dataDir    = kingpin.Flag("storage.path", "Base path for data storage.").Default("data/").String()
+		retention  = kingpin.Flag("data.retention", "How long to keep data for.").Default("120h").Duration()
 
 		externalURL    = kingpin.Flag("web.external-url", "The URL under which Alertmanager is externally reachable (for example, if Alertmanager is served via a reverse proxy). Used for generating relative and absolute links back to Alertmanager itself. If the URL has a path portion, it will be used to prefix all HTTP endpoints served by Alertmanager. If omitted, relevant URL components will be derived automatically.").String()
 		routePrefix    = kingpin.Flag("web.route-prefix", "Prefix for the internal routes of web endpoints. Defaults to path of --web.external-url.").String()
@@ -238,12 +238,12 @@ func run() int {
 		go peer.Settle(ctx, *gossipInterval*10)
 	}
 
-/*	alerts, err := mem.NewAlerts(context.Background(), marker, *alertGCInterval, logger)
-	if err != nil {
-		level.Error(logger).Log("err", err)
-		return 1
-	}
-	defer alerts.Close()*/
+	/*	alerts, err := mem.NewAlerts(context.Background(), marker, *alertGCInterval, logger)
+		if err != nil {
+			level.Error(logger).Log("err", err)
+			return 1
+		}
+		defer alerts.Close()*/
 
 	MYSQL_DB := os.Getenv("MYSQL_DB")
 	MYSQL_IP := os.Getenv("MYSQL_IP")
@@ -261,11 +261,11 @@ func run() int {
 	os.Unsetenv("MYSQL_DB")
 
 	dbconfig := &mysql.MysqlConfig{
-		Db:		MYSQL_DB,
-		Address:	MYSQL_IP,
-		Port:		MYSQL_PORT,
-		User:		MYSQL_USER,
-		Password:	MYSQL_PWD,
+		Db:       MYSQL_DB,
+		Address:  MYSQL_IP,
+		Port:     MYSQL_PORT,
+		User:     MYSQL_USER,
+		Password: MYSQL_PWD,
 	}
 
 	alerts, err := mysql.NewAlerts(dbconfig, marker, logger)
