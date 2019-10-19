@@ -231,7 +231,10 @@ func (api *API) getAlertsHandler(params alert_ops.GetAlertsParams) middleware.Re
 		}
 	}
 
-	alerts := api.alerts.GetPending()
+	// WARNING: we don't use api/v2 now, so pass fake start and end time to let the compilation pass
+	// as soon as possible.
+	var start, end time.Time
+	alerts := api.alerts.GetPending(start, end)
 	defer alerts.Close()
 
 	alertFilter := api.alertFilter(matchers, *params.Silenced, *params.Inhibited, *params.Active)

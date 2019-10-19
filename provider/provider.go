@@ -81,7 +81,8 @@ type Alerts interface {
 	Subscribe() AlertIterator
 	// GetPending returns an iterator over all alerts that have
 	// pending notifications.
-	GetPending() AlertIterator
+	// Custom API Change: time range also needed.
+	GetPending(start time.Time, end time.Time) AlertIterator
 	// Match returns the alerts with matched labels and time range.
 	Match(labels map[string]string, start time.Time, end time.Time) AlertIterator
 	// Get returns the alert for a given fingerprint.

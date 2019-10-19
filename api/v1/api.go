@@ -348,6 +348,26 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 		return true, nil
 	}
 
+	getTimeParam := func(name string) (time.Time, error) {
+		var (
+			res time.Time
+			err error
+		)
+
+		v := r.FormValue(name)
+		if v != "" {
+			res, err = parseTime(v)
+			if err != nil {
+				err := fmt.Errorf("parameter %q could not be parsed: %v", name, v)
+				api.respondError(w, apiError{
+					typ: errorBadData,
+					err: err,
+				}, nil)
+			}
+		}
+		return res, err
+	}
+
 	if filter := r.FormValue("filter"); filter != "" {
 		matchers, err = parse.Matchers(filter)
 		if err != nil {
@@ -393,7 +413,18 @@ func (api *API) listAlerts(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	alerts := api.alerts.GetPending()
+	var start, end time.Time
+	start, err = getTimeParam("start")
+	if err != nil {
+		return
+	}
+
+	end, err = getTimeParam("end")
+	if err != nil {
+		return
+	}
+
+	alerts := api.alerts.GetPending(start, end)
 	defer alerts.Close()
 
 	api.mtx.RLock()

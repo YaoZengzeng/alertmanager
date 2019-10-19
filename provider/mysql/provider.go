@@ -83,7 +83,7 @@ func (a *Alerts) Subscribe() provider.AlertIterator {
 }
 
 // GetPending returns an iterator over all the alerts that have pending notifications.
-func (a *Alerts) GetPending() provider.AlertIterator {
+func (a *Alerts) GetPending(start time.Time, end time.Time) provider.AlertIterator {
 	var (
 		ch   = make(chan *types.Alert, alertChannelLength)
 		done = make(chan struct{})
@@ -92,7 +92,7 @@ func (a *Alerts) GetPending() provider.AlertIterator {
 	go func() {
 		defer close(ch)
 
-		for _, a := range a.db.ListUnresolved() {
+		for _, a := range a.db.ListUnresolvedWithTimeRange(start, end) {
 			select {
 			case ch <- a:
 			case <-done:

@@ -131,9 +131,38 @@ func (db *DB) queryResolved(alert AlertDBItem) ([]AlertDBItem, error) {
 	return res, nil
 }
 
-// queryLastAlert query the matching alert from db directly, matched by id.
-func (db *DB) queryLastAlert(alert AlertDBItem) ([]AlertDBItem, error) {
-	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE id REGEXP :id ORDER BY start DESC LIMIT 1`)
+// queryUnresolved query the unresolved alerts from db directly.
+func (db *DB) queryUnresolved() ([]AlertDBItem, error) {
+	res := []AlertDBItem{}
+	err := db.Select(&res, `SELECT * FROM alerts WHERE end > ?`, time.Now())
+	if err != nil {
+		return nil, err
+	}
+ 
+	return res, nil
+}
+
+// queryUnresolved query the unresolved alerts within time range from db directly.
+func (db *DB) queryUnresolvedWithTimeRange(alert AlertDBItem) ([]AlertDBItem, error) {
+	var schema string
+
+	if alert.End.IsZero() {
+		if alert.Start.IsZero() {
+			// Not specify time range at all.
+			schema = `SELECT * FROM alerts WHERE end > UTC_TIMESTAMP() ORDER BY start DESC`
+		} else {
+			schema = `SELECT * FROM alerts WHERE start >= :start and end > UTC_TIMESTAMP() ORDER BY start DESC`
+		}
+	} else {
+		if alert.Start.IsZero() {
+			return nil, fmt.Errorf("invalid to specify end time without specify start time")
+		}
+		if alert.End.Before(alert.Start) {
+			return nil, fmt.Errorf("invalid to specify end time before start time in time range")
+		}
+		schema = `SELECT * FROM alerts WHERE start >= :start and start <= :end and end > UTC_TIMESTAMP() ORDER BY start DESC`
+	}
+
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)
 	if err != nil {
@@ -149,10 +178,17 @@ func (db *DB) queryLastAlert(alert AlertDBItem) ([]AlertDBItem, error) {
 	return res, nil
 }
 
-// queryUnresolved query the unresolved alerts from db directly.
-func (db *DB) queryUnresolved() ([]AlertDBItem, error) {
+// queryLastAlert query the matching alert from db directly, matched by id.
+func (db *DB) queryLastAlert(alert AlertDBItem) ([]AlertDBItem, error) {
+	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE id REGEXP :id ORDER BY start DESC LIMIT 1`)
 	res := []AlertDBItem{}
-	err := db.Select(&res, `SELECT * FROM alerts WHERE end > ?`, time.Now())
+	nstmt, err := db.PrepareNamed(schema)
+	if err != nil {
+		return nil, err
+	}
+	defer nstmt.Close()
+
+	err = nstmt.Select(&res, alert)
 	if err != nil {
 		return nil, err
 	}
@@ -335,6 +371,23 @@ func (db *DB) Set(a *types.Alert) error {
 
 func (db *DB) ListUnresolved() []*types.Alert {
 	items, err := db.queryUnresolved()
+	if err != nil {
+		level.Error(db.logger).Log("msg", "error on query unresolved alerts", "err", err)
+		return nil
+	}
+ 
+	res := []*types.Alert{}
+	for _, item := range items {
+		res = append(res, db.itemToAlert(item))
+	}
+ 
+	return res
+}
+
+// NOTE: Adding new method to avoid break existing code as little as possible.
+// Actually this method covers `ListUnresolved()`.
+func (db *DB) ListUnresolvedWithTimeRange(start time.Time, end time.Time) []*types.Alert {
+	items, err := db.queryUnresolvedWithTimeRange(formMatcher(nil, start, end))
 	if err != nil {
 		level.Error(db.logger).Log("msg", "error on query unresolved alerts", "err", err)
 		return nil
