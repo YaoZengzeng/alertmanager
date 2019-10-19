@@ -11,21 +11,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package format
+package cli
 
 import (
-	"github.com/prometheus/alertmanager/client"
-	"github.com/prometheus/alertmanager/types"
+	"testing"
 )
 
-type ByEndAt []types.Silence
+func TestCheckConfig(t *testing.T) {
+	err := CheckConfig([]string{"testdata/conf.good.yml"})
+	if err != nil {
+		t.Fatalf("checking valid config file failed with: %v", err)
+	}
 
-func (s ByEndAt) Len() int           { return len(s) }
-func (s ByEndAt) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s ByEndAt) Less(i, j int) bool { return s[i].EndsAt.Before(s[j].EndsAt) }
-
-type ByStartsAt []*client.ExtendedAlert
-
-func (s ByStartsAt) Len() int           { return len(s) }
-func (s ByStartsAt) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s ByStartsAt) Less(i, j int) bool { return s[i].StartsAt.Before(s[j].StartsAt) }
+	err = CheckConfig([]string{"testdata/conf.bad.yml"})
+	if err == nil {
+		t.Fatalf("failed to detect invalid file.")
+	}
+}

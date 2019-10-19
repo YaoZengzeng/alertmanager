@@ -11,21 +11,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-package format
+package cli
 
 import (
-	"github.com/prometheus/alertmanager/client"
-	"github.com/prometheus/alertmanager/types"
+	"gopkg.in/alecthomas/kingpin.v2"
 )
 
-type ByEndAt []types.Silence
-
-func (s ByEndAt) Len() int           { return len(s) }
-func (s ByEndAt) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s ByEndAt) Less(i, j int) bool { return s[i].EndsAt.Before(s[j].EndsAt) }
-
-type ByStartsAt []*client.ExtendedAlert
-
-func (s ByStartsAt) Len() int           { return len(s) }
-func (s ByStartsAt) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
-func (s ByStartsAt) Less(i, j int) bool { return s[i].StartsAt.Before(s[j].StartsAt) }
+func configureAlertCmd(app *kingpin.Application) {
+	alertCmd := app.Command("alert", "Add or query alerts.").PreAction(requireAlertManagerURL)
+	configureQueryAlertsCmd(alertCmd)
+	configureAddAlertCmd(alertCmd)
+}
