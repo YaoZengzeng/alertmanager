@@ -118,6 +118,11 @@ func (db *DB) queryResolved(alert AlertDBItem) ([]AlertDBItem, error) {
 
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)
+	if err != nil {
+		return nil, err
+	}
+	defer nstmt.Close()
+
 	err = nstmt.Select(&res, alert)
 	if err != nil {
 		return nil, err
@@ -131,6 +136,11 @@ func (db *DB) queryLastAlert(alert AlertDBItem) ([]AlertDBItem, error) {
 	schema := fmt.Sprintf(`SELECT * FROM alerts WHERE id REGEXP :id ORDER BY start DESC LIMIT 1`)
 	res := []AlertDBItem{}
 	nstmt, err := db.PrepareNamed(schema)
+	if err != nil {
+		return nil, err
+	}
+	defer nstmt.Close()
+
 	err = nstmt.Select(&res, alert)
 	if err != nil {
 		return nil, err
