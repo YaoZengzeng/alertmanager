@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 
 	"github.com/prometheus/client_golang/api"
@@ -35,6 +36,7 @@ const (
 	epSilence  = apiPrefix + "/silence/:id"
 	epSilences = apiPrefix + "/silences"
 	epAlerts   = apiPrefix + "/alerts"
+	epResolved = apiPrefix + "/resolved"
 
 	statusSuccess = "success"
 	statusError   = "error"
@@ -156,7 +158,9 @@ func (h *httpStatusAPI) Get(ctx context.Context) (*ServerStatus, error) {
 // AlertAPI provides bindings for the Alertmanager's alert API.
 type AlertAPI interface {
 	// List returns all the active alerts.
-	List(ctx context.Context, filter, receiver string, silenced, inhibited, active, unprocessed bool) ([]*ExtendedAlert, error)
+	List(ctx context.Context, filter, receiver string, silenced, inhibited, active, unprocessed bool, start, end time.Time) ([]*ExtendedAlert, error)
+	// Resolved returns all resolved alerts.
+	Resolved(ctx context.Context, filter string, start, end time.Time) ([]*ExtendedAlert, error)
 	// Push sends a list of alerts to the Alertmanager.
 	Push(ctx context.Context, alerts ...Alert) error
 }
@@ -196,7 +200,41 @@ type httpAlertAPI struct {
 	client api.Client
 }
 
-func (h *httpAlertAPI) List(ctx context.Context, filter, receiver string, silenced, inhibited, active, unprocessed bool) ([]*ExtendedAlert, error) {
+func (h *httpAlertAPI) Resolved(ctx context.Context, filter string, start, end time.Time) ([]*ExtendedAlert, error) {
+	u := h.client.URL(epResolved, nil)
+	params := url.Values{}
+	if filter != "" {
+		params.Add("filter", filter)
+	}
+
+	params.Add("start", strconv.FormatInt(start.Unix(), 10))
+	params.Add("end", strconv.FormatInt(end.Unix(), 10))
+
+	// params.Add("silenced", fmt.Sprintf("%t", silenced))
+	// params.Add("inhibited", fmt.Sprintf("%t", inhibited))
+	// params.Add("active", fmt.Sprintf("%t", active))
+	// params.Add("unprocessed", fmt.Sprintf("%t", unprocessed))
+	// params.Add("receiver", receiver)
+
+	u.RawQuery = params.Encode()
+
+	req, err := http.NewRequest(http.MethodGet, u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	_, body, err := h.client.Do(ctx, req)
+	if err != nil {
+		return nil, err
+	}
+
+	var alts []*ExtendedAlert
+	err = json.Unmarshal(body, &alts)
+
+	return alts, err
+}
+
+func (h *httpAlertAPI) List(ctx context.Context, filter, receiver string, silenced, inhibited, active, unprocessed bool, start, end time.Time) ([]*ExtendedAlert, error) {
 	u := h.client.URL(epAlerts, nil)
 	params := url.Values{}
 	if filter != "" {
@@ -207,6 +245,14 @@ func (h *httpAlertAPI) List(ctx context.Context, filter, receiver string, silenc
 	params.Add("active", fmt.Sprintf("%t", active))
 	params.Add("unprocessed", fmt.Sprintf("%t", unprocessed))
 	params.Add("receiver", receiver)
+
+	if start != end {
+		// For unresolved alerts, only specify time period when start != end.
+		params.Add("start", strconv.FormatInt(start.Unix(), 10))
+		params.Add("end", strconv.FormatInt(end.Unix(), 10))
+	}
+
+
 	u.RawQuery = params.Encode()
 
 	req, err := http.NewRequest(http.MethodGet, u.String(), nil)

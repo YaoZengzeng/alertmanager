@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/prometheus/client_golang/api"
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -28,9 +29,10 @@ import (
 )
 
 type alertQueryCmd struct {
-	inhibited, silenced, active, unprocessed bool
+	inhibited, silenced, active, unprocessed, resolved bool
 	receiver                                 string
 	matcherGroups                            []string
+	within					 time.Duration
 }
 
 const alertQueryHelp = `View and search through current alerts.
@@ -56,6 +58,14 @@ amtool alert query 'alertname=~foo.*'
 	(similar to prometheus) is used to represent a regex match. Regex matching
 	can be used in combination with a direct match.
 
+amtool alert query --within 2h
+
+	Query alerts within (now - 2h, now) time period.
+
+amtool alert query --resolved
+
+	Query alerts that has been resolved, support --within as will.
+
 Amtool supports several flags for filtering the returned alerts by state
 (inhibited, silenced, active, unprocessed). If none of these flags is given,
 only active alerts are returned.
@@ -70,8 +80,10 @@ func configureQueryAlertsCmd(cc *kingpin.CmdClause) {
 	queryCmd.Flag("silenced", "Show silenced alerts").Short('s').BoolVar(&a.silenced)
 	queryCmd.Flag("active", "Show active alerts").Short('a').BoolVar(&a.active)
 	queryCmd.Flag("unprocessed", "Show unprocessed alerts").Short('u').BoolVar(&a.unprocessed)
+	queryCmd.Flag("resolved", "Show resolved alerts").Short('d').BoolVar(&a.resolved)
 	queryCmd.Flag("receiver", "Show alerts matching receiver (Supports regex syntax)").Short('r').StringVar(&a.receiver)
 	queryCmd.Arg("matcher-groups", "Query filter").StringsVar(&a.matcherGroups)
+	queryCmd.Flag("within", "Show silences that will expire or have expired within a duration").DurationVar(&a.within)
 	queryCmd.Action(execWithTimeout(a.queryAlerts))
 }
 
@@ -99,7 +111,17 @@ func (a *alertQueryCmd) queryAlerts(ctx context.Context, _ *kingpin.ParseContext
 	if !a.silenced && !a.inhibited && !a.active && !a.unprocessed {
 		a.active = true
 	}
-	fetchedAlerts, err := alertAPI.List(ctx, filterString, a.receiver, a.silenced, a.inhibited, a.active, a.unprocessed)
+
+	var fetchedAlerts []*client.ExtendedAlert
+
+	// By default, get the alerts from (now - within, now) time period.
+	now := time.Now()
+	if a.resolved {
+		fetchedAlerts, err = alertAPI.Resolved(ctx, filterString, now.Add(-a.within), now)
+	} else {
+		fetchedAlerts, err = alertAPI.List(ctx, filterString, a.receiver, a.silenced, a.inhibited, a.active, a.unprocessed, now.Add(-a.within), now)
+	}
+
 	if err != nil {
 		return err
 	}
