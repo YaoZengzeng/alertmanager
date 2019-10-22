@@ -277,6 +277,7 @@ func createStage(rc *config.Receiver, tmpl *template.Template, wait func() time.
 		}
 		var s MultiStage
 		s = append(s, NewWaitStage(wait))
+		// 设置dedup，根据notification log进行去重
 		s = append(s, NewDedupStage(i, notificationLog, recv))
 		// RetryStage真正将通知发送出去
 		s = append(s, NewRetryStage(i, rc.Name))
@@ -384,6 +385,7 @@ func NewGossipSettleStage(p *cluster.Peer) *GossipSettleStage {
 
 func (n *GossipSettleStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Alert) (context.Context, []*types.Alert, error) {
 	if n.peer != nil {
+		// 如果peer不为nil，则运行n.peer.WaitReady()
 		n.peer.WaitReady()
 	}
 	// 如果peer为nil，则直接返回

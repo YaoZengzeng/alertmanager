@@ -251,6 +251,7 @@ func (s state) merge(e *pb.MeshEntry, now time.Time) bool {
 	if e.ExpiresAt.Before(now) {
 		return false
 	}
+	// 根据group key和receiver key构建state key
 	k := stateKey(string(e.Entry.GroupKey), e.Entry.Receiver)
 
 	prev, ok := s[k]
@@ -310,6 +311,7 @@ func New(opts ...Option) (*Log, error) {
 		logger:    log.NewNopLogger(),
 		now:       utcNow,
 		st:        state{},
+		// 默认的broadcast函数为空
 		broadcast: func([]byte) {},
 	}
 	for _, o := range opts {
@@ -449,7 +451,9 @@ func (l *Log) Log(r *pb.Receiver, gkey string, firingAlerts, resolvedAlerts []ui
 	if err != nil {
 		return err
 	}
+	// 将entry进行合并
 	l.st.merge(e, l.now())
+	// 广播entry
 	l.broadcast(b)
 
 	return nil
@@ -561,6 +565,7 @@ func (l *Log) MarshalBinary() ([]byte, error) {
 }
 
 // Merge merges notification log state received from the cluster with the local state.
+// Merge将从cluster收到的notifcation log state和local state合并
 func (l *Log) Merge(b []byte) error {
 	st, err := decodeState(bytes.NewReader(b))
 	if err != nil {
@@ -576,6 +581,8 @@ func (l *Log) Merge(b []byte) error {
 			// not oversized, gossip it to other nodes. We don't
 			// propagate oversized messages because they're sent to
 			// all nodes already.
+			// 如果我们是第一次看到这个message并且它没有oversized，将它gossip到其他nodes
+			// 我们不传播oversized message，因为它们已经被发送给所有节点了
 			l.broadcast(b)
 			l.metrics.propagatedMessagesTotal.Inc()
 			level.Debug(l.logger).Log("msg", "gossiping new entry", "entry", e)

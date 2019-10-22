@@ -27,6 +27,7 @@ import (
 
 // Channel allows clients to send messages for a specific state type that will be
 // broadcasted in a best-effort manner.
+// Channel允许clients发送一个特定的state type，它会以best-effort的形式被发送
 type Channel struct {
 	key          string
 	send         func([]byte)
@@ -44,6 +45,7 @@ type Channel struct {
 
 // NewChannel creates a new Channel struct, which handles sending normal and
 // oversize messages to peers.
+// NewChannel创建一个新的Channel struct，它处理对于normal以及oversize的messages的发送
 func NewChannel(
 	key string,
 	send func([]byte),
@@ -124,6 +126,7 @@ func (c *Channel) handleOverSizedMessages(stopc chan struct{}) {
 }
 
 // Broadcast enqueues a message for broadcasting.
+// Braodcast将一个message入队用于发送
 func (c *Channel) Broadcast(b []byte) {
 	b, err := proto.Marshal(&clusterpb.Part{Key: c.key, Data: b})
 	if err != nil {

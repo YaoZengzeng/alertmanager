@@ -33,6 +33,8 @@ const (
 
 // delegate implements memberlist.Delegate and memberlist.EventDelegate
 // and broadcasts its peer's state in the cluster.
+// delegate实现了memberlist.Delegate以及memberlist.EventDelegate，并且将它的peer的state
+// 广播到cluster
 type delegate struct {
 	*Peer
 
@@ -125,11 +127,13 @@ func newDelegate(l log.Logger, reg prometheus.Registerer, p *Peer, retransmit in
 }
 
 // NodeMeta retrieves meta-data about the current node when broadcasting an alive message.
+// NodeMeta检索当前节点的meta-data，当前广播一个alive message的时候
 func (d *delegate) NodeMeta(limit int) []byte {
 	return []byte{}
 }
 
 // NotifyMsg is the callback invoked when a user-level gossip message is received.
+// NotifyMsg是收到一个user-level gossip message之后的回调函数
 func (d *delegate) NotifyMsg(b []byte) {
 	d.messagesReceived.WithLabelValues(update).Inc()
 	d.messagesReceivedSize.WithLabelValues(update).Add(float64(len(b)))
@@ -140,10 +144,12 @@ func (d *delegate) NotifyMsg(b []byte) {
 		return
 	}
 
+	// 如果state不存在，则返回
 	s, ok := d.states[p.Key]
 	if !ok {
 		return
 	}
+	// 否则，将broadcast的结果合并
 	if err := s.Merge(p.Data); err != nil {
 		level.Warn(d.logger).Log("msg", "merge broadcast", "err", err, "key", p.Key)
 		return

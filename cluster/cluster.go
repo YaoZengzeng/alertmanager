@@ -34,6 +34,7 @@ import (
 )
 
 // Peer is a single peer in a gossip cluster.
+// Peer是在一个gossip cluster里的single peer
 type Peer struct {
 	mlist    *memberlist.Memberlist
 	delegate *delegate
@@ -502,6 +503,7 @@ func (p *Peer) peerUpdate(n *memberlist.Node) {
 
 // AddState adds a new state that will be gossiped. It returns a channel to which
 // broadcast messages for the state can be sent.
+// AddState增加一个新的state，它会被gossiped，它返回一个channel，通过它state可以被广播发送
 func (p *Peer) AddState(key string, s State, reg prometheus.Registerer) *Channel {
 	p.states[key] = s
 	send := func(b []byte) {
@@ -510,6 +512,7 @@ func (p *Peer) AddState(key string, s State, reg prometheus.Registerer) *Channel
 	peers := func() []*memberlist.Node {
 		nodes := p.Peers()
 		for i, n := range nodes {
+			// 找到自己并且滤去
 			if n.Name == p.Self().Name {
 				nodes = append(nodes[:i], nodes[i+1:]...)
 				break
@@ -518,6 +521,7 @@ func (p *Peer) AddState(key string, s State, reg prometheus.Registerer) *Channel
 		return nodes
 	}
 	sendOversize := func(n *memberlist.Node, b []byte) error {
+		// 将数据发送到peers
 		return p.mlist.SendReliable(n, b)
 	}
 	return NewChannel(key, send, peers, sendOversize, p.logger, p.stopc, reg)
@@ -626,6 +630,7 @@ func (p *Peer) Settle(ctx context.Context, interval time.Duration) {
 		}
 		elapsed := time.Since(start)
 		n := len(p.Peers())
+		// 最终，peers的数目要大于等于NumOkayRequired
 		if nOkay >= NumOkayRequired {
 			level.Info(p.logger).Log("msg", "gossip settled; proceeding", "elapsed", elapsed)
 			break

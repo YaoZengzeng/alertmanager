@@ -190,6 +190,7 @@ func run() int {
 		return 1
 	}
 	if peer != nil {
+		// 对于notification，设置一个state
 		c := peer.AddState("nfl", notificationLog, prometheus.DefaultRegisterer)
 		// 如果设置了集群模式，则设置broadcast
 		notificationLog.SetBroadcast(c.Broadcast)
@@ -212,6 +213,7 @@ func run() int {
 		return 1
 	}
 	if peer != nil {
+		// 对于silence也设置一个state
 		c := peer.AddState("sil", silences, prometheus.DefaultRegisterer)
 		silences.SetBroadcast(c.Broadcast)
 	}
@@ -242,6 +244,7 @@ func run() int {
 		ctx, cancel := context.WithTimeout(context.Background(), *settleTimeout)
 		defer func() {
 			cancel()
+			// 当退出的时候，离开gossip mesh
 			if err := peer.Leave(10 * time.Second); err != nil {
 				level.Warn(logger).Log("msg", "unable to leave gossip mesh", "err", err)
 			}

@@ -75,6 +75,7 @@ var xxx_messageInfo_Receiver proto.InternalMessageInfo
 
 // Entry holds information about a successful notification
 // sent to a receiver.
+// Entry维护了一个发送到receiver的成功的notification
 type Entry struct {
 	// The key identifying the dispatching group.
 	GroupKey []byte `protobuf:"bytes,1,opt,name=group_key,json=groupKey,proto3" json:"group_key,omitempty"`
@@ -89,8 +90,10 @@ type Entry struct {
 	// Timestamp of the succeeding notification.
 	Timestamp time.Time `protobuf:"bytes,5,opt,name=timestamp,proto3,stdtime" json:"timestamp"`
 	// FiringAlerts list of hashes of firing alerts at the last notification time.
+	// FiringAlerts是在上一次notification time的firing alerts的一系列hashes
 	FiringAlerts []uint64 `protobuf:"varint,6,rep,packed,name=firing_alerts,json=firingAlerts,proto3" json:"firing_alerts,omitempty"`
 	// ResolvedAlerts list of hashes of resolved alerts at the last notification time.
+	// ResolvedAlerts是上一次notification time的resolved alerts的一系列hashes
 	ResolvedAlerts       []uint64 `protobuf:"varint,7,rep,packed,name=resolved_alerts,json=resolvedAlerts,proto3" json:"resolved_alerts,omitempty"`
 	XXX_NoUnkeyedLiteral struct{} `json:"-"`
 	XXX_unrecognized     []byte   `json:"-"`
