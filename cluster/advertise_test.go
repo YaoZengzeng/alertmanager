@@ -38,6 +38,7 @@ func TestCalculateAdvertiseAddress(t *testing.T) {
 			bind:      "192.0.2.1",
 			advertise: "",
 
+			// 若未指定advertise，则默认为bind
 			expectedIP: net.ParseIP("192.0.2.1"),
 			err:        false,
 		},

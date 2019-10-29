@@ -49,6 +49,7 @@ type listeningAlerts struct {
 }
 
 // NewAlerts returns a new alert provider.
+// NewAlerts返回一个新的alert provider
 func NewAlerts(ctx context.Context, m types.Marker, intervalGC time.Duration, l log.Logger) (*Alerts, error) {
 	ctx, cancel := context.WithCancel(ctx)
 	a := &Alerts{

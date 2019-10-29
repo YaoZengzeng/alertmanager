@@ -26,6 +26,7 @@ import (
 
 const (
 	// Maximum number of messages to be held in the queue.
+	// 在队列中维护的最大数目的messages
 	maxQueueSize = 4096
 	fullState    = "full_state"
 	update       = "update"
@@ -49,6 +50,7 @@ type delegate struct {
 }
 
 func newDelegate(l log.Logger, reg prometheus.Registerer, p *Peer, retransmit int) *delegate {
+	// 创建bcast
 	bcast := &memberlist.TransmitLimitedQueue{
 		NumNodes:       p.ClusterSize,
 		RetransmitMult: retransmit,
@@ -81,18 +83,21 @@ func newDelegate(l log.Logger, reg prometheus.Registerer, p *Peer, retransmit in
 	})
 	peerPosition := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "alertmanager_peer_position",
+		// Alertmanager认为的它在集群中的位置，这个位置决定了peer在集群中的行为
 		Help: "Position the Alertmanager instance believes it's in. The position determines a peer's behavior in the cluster.",
 	}, func() float64 {
 		return float64(p.Position())
 	})
 	healthScore := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "alertmanager_cluster_health_score",
+		// 集群的健康得分，值越低越好，零值代表完全健康
 		Help: "Health score of the cluster. Lower values are better and zero means 'totally healthy'.",
 	}, func() float64 {
 		return float64(p.mlist.GetHealthScore())
 	})
 	messagesQueued := prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Name: "alertmanager_cluster_messages_queued",
+		// 在队列中的cluster messages的数目
 		Help: "Number of cluster messages which are queued.",
 	}, func() float64 {
 		return float64(bcast.NumQueued())
@@ -145,6 +150,7 @@ func (d *delegate) NotifyMsg(b []byte) {
 	}
 
 	// 如果state不存在，则返回
+	// d.states其实就是peer的states
 	s, ok := d.states[p.Key]
 	if !ok {
 		return
@@ -157,7 +163,9 @@ func (d *delegate) NotifyMsg(b []byte) {
 }
 
 // GetBroadcasts is called when user data messages can be broadcasted.
+// GetBroadcasts会被调用，当用户的数据可以被广播时
 func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
+	// delegate的GetBroadcasts被调用时，队列中的内容才会真正被发送
 	msgs := d.bcast.GetBroadcasts(overhead, limit)
 	d.messagesSent.WithLabelValues(update).Add(float64(len(msgs)))
 	for _, m := range msgs {
@@ -167,12 +175,15 @@ func (d *delegate) GetBroadcasts(overhead, limit int) [][]byte {
 }
 
 // LocalState is called when gossip fetches local state.
+// 当gossip需要获取local state的时候会调用LocalState
 func (d *delegate) LocalState(_ bool) []byte {
 	all := &clusterpb.FullState{
 		Parts: make([]clusterpb.Part, 0, len(d.states)),
 	}
 
+	// 这边的states就两种，nfl和sil
 	for key, s := range d.states {
+		// 对各个states进行marshal
 		b, err := s.MarshalBinary()
 		if err != nil {
 			level.Warn(d.logger).Log("msg", "encode local state", "err", err, "key", key)
@@ -180,6 +191,7 @@ func (d *delegate) LocalState(_ bool) []byte {
 		}
 		all.Parts = append(all.Parts, clusterpb.Part{Key: key, Data: b})
 	}
+	// 最后将整体进行marshal
 	b, err := proto.Marshal(all)
 	if err != nil {
 		level.Warn(d.logger).Log("msg", "encode local state", "err", err)
@@ -201,12 +213,16 @@ func (d *delegate) MergeRemoteState(buf []byte, _ bool) {
 	}
 	d.mtx.RLock()
 	defer d.mtx.RUnlock()
+	// 获取全局的数据
 	for _, p := range fs.Parts {
+		// 获取sil或者nfl
 		s, ok := d.states[p.Key]
 		if !ok {
 			level.Warn(d.logger).Log("received", "unknown state key", "len", len(buf), "key", p.Key)
+			// 对于不知道的state key就直接跳过
 			continue
 		}
+		// 直接调用对应的方法进行Merge
 		if err := s.Merge(p.Data); err != nil {
 			level.Warn(d.logger).Log("msg", "merge remote state", "err", err, "key", p.Key)
 			return
@@ -234,6 +250,7 @@ func (d *delegate) NotifyUpdate(n *memberlist.Node) {
 
 // handleQueueDepth ensures that the queue doesn't grow unbounded by pruning
 // older messages at regular interval.
+// handleQueueDepth确保队列不会无限制地增长，通过定期清除older meesages
 func (d *delegate) handleQueueDepth() {
 	for {
 		select {

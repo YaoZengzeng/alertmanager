@@ -86,6 +86,7 @@ func NewRoute(cr *config.Route, parent *Route) *Route {
 	if cr.GroupInterval != nil {
 		opts.GroupInterval = time.Duration(*cr.GroupInterval)
 	}
+	// 设置重复告警的时间间隔
 	if cr.RepeatInterval != nil {
 		opts.RepeatInterval = time.Duration(*cr.RepeatInterval)
 	}
@@ -139,12 +140,14 @@ func (r *Route) Match(lset model.LabelSet) []*Route {
 
 		all = append(all, matches...)
 
+		// 如果匹配到了Route并且不进一步continue，则跳出循环并且返回
 		if matches != nil && !cr.Continue {
 			break
 		}
 	}
 
 	// If no child nodes were matches, the current node itself is a match.
+	// 如果没有一个子节点是匹配的，则返回当前节点作为一个match
 	if len(all) == 0 {
 		all = append(all, r)
 	}
@@ -161,6 +164,7 @@ func (r *Route) Key() string {
 		b = append(b, r.parent.Key()...)
 		b = append(b, '/')
 	}
+	// 从根Route的matcher字符串匹配而来的Key
 	return string(append(b, r.Matchers.String()...))
 }
 

@@ -11,17 +11,22 @@ import (
 // the cluster (via gossip) but limits the number of transmits per
 // message. It also prioritizes messages with lower transmit counts
 // (hence newer messages).
+// TransmitLimitedQueue用于将message加入队列从而向集群广播，但是限制每个message
+// 传输的次数，同时它优先有着低transmit counts的messages，因为它们更新
 type TransmitLimitedQueue struct {
 	// NumNodes returns the number of nodes in the cluster. This is
 	// used to determine the retransmit count, which is calculated
 	// based on the log of this.
+	// NumNodes返回集群中节点的个数，这用于决定retransmit count，这由这个值的log计算得到
 	NumNodes func() int
 
 	// RetransmitMult is the multiplier used to determine the maximum
 	// number of retransmissions attempted.
+	// RetransmitMult是一个乘数用来决定重传的最大数目
 	RetransmitMult int
 
 	mu    sync.Mutex
+	// 将*limitedBroadcast作为一个btree.Item进行存储
 	tq    *btree.BTree // stores *limitedBroadcast as btree.Item
 	tm    map[string]*limitedBroadcast
 	idGen int64
@@ -111,17 +116,22 @@ func (q *TransmitLimitedQueue) walkReadOnlyLocked(reverse bool, f func(*limitedB
 
 // Broadcast is something that can be broadcasted via gossip to
 // the memberlist cluster.
+// Broadcast是那个能够通过gossip广播到memberlist cluster的东西
 type Broadcast interface {
 	// Invalidates checks if enqueuing the current broadcast
 	// invalidates a previous broadcast
+	// Invalidates检查是否将当前的broadcast入队会让之前的broadcast无效
 	Invalidates(b Broadcast) bool
 
 	// Returns a byte form of the message
+	// 返回message的字节形式
 	Message() []byte
 
 	// Finished is invoked when the message will no longer
 	// be broadcast, either due to invalidation or to the
 	// transmit limit being reached
+	// Finished会在message不再被广播，由于无效或者到达了transmit limit的时候
+	// 被调用
 	Finished()
 }
 
@@ -150,6 +160,7 @@ type NamedBroadcast interface {
 // UniqueBroadcast is an optional interface that indicates that each message is
 // intrinsically unique and there is no need to scan the broadcast queue for
 // duplicates.
+// UniqueBroadcast是一个可选的接口，用来表示每个message都是唯一的，并且没有必须要扫描broadcast queue来去重
 //
 // You should ensure that Invalidates() always returns false if implementing
 // this interface. Invalidates() isn't currently used for UniqueBroadcasts, but
@@ -238,6 +249,7 @@ func (q *TransmitLimitedQueue) queueBroadcast(b Broadcast, initialTransmits int)
 	}
 
 	// Append to the relevant queue.
+	// 加入相应的队列
 	q.addItem(lb)
 }
 
@@ -258,6 +270,7 @@ func (q *TransmitLimitedQueue) deleteItem(cur *limitedBroadcast) {
 
 // addItem adds the given item into the overall datastructure. You must already
 // hold the mutex.
+// addItem将给定的item加入整个数据结构中
 func (q *TransmitLimitedQueue) addItem(cur *limitedBroadcast) {
 	_ = q.tq.ReplaceOrInsert(cur)
 	if cur.name != "" {
@@ -285,6 +298,7 @@ func (q *TransmitLimitedQueue) getTransmitRange() (minTransmit, maxTransmit int)
 
 // GetBroadcasts is used to get a number of broadcasts, up to a byte limit
 // and applying a per-message overhead as provided.
+// GetBroadcasts用于获取一系列的broadcasts，直到byte limit，并且应用一个per-message overhead
 func (q *TransmitLimitedQueue) GetBroadcasts(overhead, limit int) [][]byte {
 	q.mu.Lock()
 	defer q.mu.Unlock()
@@ -405,6 +419,7 @@ func (q *TransmitLimitedQueue) Reset() {
 
 // Prune will retain the maxRetain latest messages, and the rest
 // will be discarded. This can be used to prevent unbounded queue sizes
+// Prune用来维护maxRetain个最近的messages，剩下的都会被丢弃，这可以用来防止无限的队列大小
 func (q *TransmitLimitedQueue) Prune(maxRetain int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()

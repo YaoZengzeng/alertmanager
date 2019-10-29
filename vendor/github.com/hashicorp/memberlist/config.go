@@ -223,6 +223,7 @@ type Config struct {
 // errs on the side of caution, choosing values that are optimized
 // for higher convergence at the cost of higher bandwidth usage. Regardless,
 // these values are a good starting point when getting started with memberlist.
+// 更快的收敛速度往往意味着消耗更多的贷款资源
 func DefaultLANConfig() *Config {
 	hostname, _ := os.Hostname()
 	return &Config{
@@ -234,6 +235,7 @@ func DefaultLANConfig() *Config {
 		ProtocolVersion:         ProtocolVersion2Compatible,
 		TCPTimeout:              10 * time.Second,       // Timeout after 10 seconds
 		IndirectChecks:          3,                      // Use 3 nodes for the indirect ping
+		// RetransmitMult意味着将一个message发送到4 * log(N+1)个节点
 		RetransmitMult:          4,                      // Retransmit a message 4 * log(N+1) nodes
 		SuspicionMult:           4,                      // Suspect a node for 4 * log(N+1) * Interval
 		SuspicionMaxTimeoutMult: 6,                      // For 10k nodes this will give a max timeout of 120 seconds

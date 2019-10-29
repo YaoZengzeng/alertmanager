@@ -150,6 +150,7 @@ func (ms Matchers) Equal(o Matchers) bool {
 }
 
 // Match checks whether all matchers are fulfilled against the given label set.
+// Match检查给定的label set是否匹配所有的matchers
 func (ms Matchers) Match(lset model.LabelSet) bool {
 	for _, m := range ms {
 		if !m.Match(lset) {

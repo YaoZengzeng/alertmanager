@@ -54,6 +54,7 @@ type Memberlist struct {
 	msgQueueLock         sync.Mutex
 
 	nodeLock   sync.RWMutex
+	// nodes为已知的节点
 	nodes      []*nodeState          // Known nodes
 	nodeMap    map[string]*nodeState // Maps Addr.String() -> NodeState
 	nodeTimers map[string]*suspicion // Maps Addr.String() -> suspicion timer
@@ -74,6 +75,7 @@ type Memberlist struct {
 
 // newMemberlist creates the network listeners.
 // Does not schedule execution of background maintenance.
+// newMemberlist创建network listeners，不要将background maintenance调度过来执行
 func newMemberlist(conf *Config) (*Memberlist, error) {
 	if conf.ProtocolVersion < ProtocolVersionMin {
 		return nil, fmt.Errorf("Protocol version '%d' too low. Must be in range: [%d, %d]",
@@ -101,6 +103,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 	}
 
 	if conf.LogOutput != nil && conf.Logger != nil {
+		// 必须选择一个log configuration setting
 		return nil, fmt.Errorf("Cannot specify both LogOutput and Logger. Please choose a single log configuration setting.")
 	}
 
@@ -116,6 +119,7 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 
 	// Set up a network transport by default if a custom one wasn't given
 	// by the config.
+	// 设置一个默认的network transport，如果没有给定一个custom one
 	transport := conf.Transport
 	if transport == nil {
 		nc := &NetTransportConfig{
@@ -194,6 +198,9 @@ func newMemberlist(conf *Config) (*Memberlist, error) {
 // all the listeners to allow other nodes to join this memberlist.
 // After creating a Memberlist, the configuration given should not be
 // modified by the user anymore.
+// create会用给定配置创建一个新的Memberlist，这不会连接到任何其他节点（参见Join），但是会启动
+// 所有的listeners用于允许其他节点加入memberlist，在创建了Memberlist之后，给定的配置不应该再被
+// 用户修改
 func Create(conf *Config) (*Memberlist, error) {
 	m, err := newMemberlist(conf)
 	if err != nil {
@@ -212,10 +219,13 @@ func Create(conf *Config) (*Memberlist, error) {
 // the Memberlist only contains our own state, so doing this will cause
 // remote nodes to become aware of the existence of this node, effectively
 // joining the cluster.
+// Join用于通过和所有给定的hosts交互并且执行一个state sync而试着加入一个cluster。一开始
+// Memberlist只包含我们自己的state，因此这会让remote nodes意识到我们这个node，从而高效地加入cluster
 //
 // This returns the number of hosts successfully contacted and an error if
 // none could be reached. If an error is returned, the node did not successfully
 // join the cluster.
+// 返回的是成功交互的hosts的数目以及error，如果一个都无法交互，如果返回了error，则node没有成功加入cluster
 func (m *Memberlist) Join(existing []string) (int, error) {
 	numSuccess := 0
 	var errs error
@@ -228,8 +238,10 @@ func (m *Memberlist) Join(existing []string) (int, error) {
 			continue
 		}
 
+		// 遍历提供的members
 		for _, addr := range addrs {
 			hp := joinHostPort(addr.ip.String(), addr.port)
+			// 在join的时候会直接调用pushPullNode
 			if err := m.pushPullNode(hp, true); err != nil {
 				err = fmt.Errorf("Failed to join %s: %v", addr.ip, err)
 				errs = multierror.Append(errs, err)
@@ -363,9 +375,12 @@ func (m *Memberlist) resolveAddr(hostStr string) ([]ipPort, error) {
 // setAlive is used to mark this node as being alive. This is the same
 // as if we received an alive notification our own network channel for
 // ourself.
+// setAlive用于标记这个node已经alive，这和我们从network channel接收到一个我们自己的
+// alive notification是一样的
 func (m *Memberlist) setAlive() error {
 	// Get the final advertise address from the transport, which may need
 	// to see which address we bound to.
+	// 从transport获取最后的advertise address，当我们想知道我们绑定到哪个地址的时候需要
 	addr, port, err := m.transport.FinalAdvertiseAddr(
 		m.config.AdvertiseAddr, m.config.AdvertisePort)
 	if err != nil {
@@ -511,6 +526,8 @@ func (m *Memberlist) SendBestEffort(to *Node, msg []byte) error {
 // target a user message at the given node (this does not use the gossip
 // mechanism). Delivery is guaranteed if no error is returned, and there is no
 // limit on the size of the message.
+// SendReliable用可靠的面向流的接口将用户的message传输到给定的node（这不是用的gossip机制）
+// Delivery是有保证的，如果没有error返回，并且没有对message大小的限制
 func (m *Memberlist) SendReliable(to *Node, msg []byte) error {
 	return m.sendUserMsg(to.Address(), msg)
 }
@@ -518,6 +535,7 @@ func (m *Memberlist) SendReliable(to *Node, msg []byte) error {
 // Members returns a list of all known live nodes. The node structures
 // returned must not be modified. If you wish to modify a Node, make a
 // copy first.
+// Members返回一系列已知的live nodes，返回的node structures不能被修改
 func (m *Memberlist) Members() []*Node {
 	m.nodeLock.RLock()
 	defer m.nodeLock.RUnlock()
@@ -552,10 +570,14 @@ func (m *Memberlist) NumMembers() (alive int) {
 // Leave will broadcast a leave message but will not shutdown the background
 // listeners, meaning the node will continue participating in gossip and state
 // updates.
+// Leave会将一个leave message广播，但是不会关闭后台的listeners，这意味着node会接着参与gossip
+// 以及state updates
 //
 // This will block until the leave message is successfully broadcasted to
 // a member of the cluster, if any exist or until a specified timeout
 // is reached.
+// 这会一直持续到leave message被成功发送到一个cluster的memeber，如果存在的话，或者直到
+// 指定的timeout到达了
 //
 // This method is safe to call multiple times, but must not be called
 // after the cluster is already shut down.

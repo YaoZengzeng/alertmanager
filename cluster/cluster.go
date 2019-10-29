@@ -66,6 +66,7 @@ type Peer struct {
 
 // peer is an internal type used for bookkeeping. It holds the state of peers
 // in the cluster.
+// peer是一个内部的类型用于记录，它维护集群中peer的状态
 type peer struct {
 	status    PeerStatus
 	leaveTime time.Time
@@ -143,6 +144,8 @@ func Create(
 		}
 	}
 
+	// 将peers以及advertiseAddr解析为IP地址
+	// 并且会排除本节点自身的ip地址
 	resolvedPeers, err := resolvePeers(context.Background(), knownPeers, advertiseAddr, &net.Resolver{}, waitIfEmpty)
 	if err != nil {
 		return nil, errors.Wrap(err, "resolve peers")
@@ -150,21 +153,25 @@ func Create(
 	level.Debug(l).Log("msg", "resolved peers to following addresses", "peers", strings.Join(resolvedPeers, ","))
 
 	// Initial validation of user-specified advertise address.
+	// 对用户指定的advertise address进行初始化检测
 	addr, err := calculateAdvertiseAddress(bindHost, advertiseHost)
 	if err != nil {
 		level.Warn(l).Log("err", "couldn't deduce an advertise address: "+err.Error())
 	} else if hasNonlocal(resolvedPeers) && isUnroutable(addr.String()) {
+		// 如果有非本地且不能路由的地址
 		level.Warn(l).Log("err", "this node advertises itself on an unroutable address", "addr", addr.String())
 		level.Warn(l).Log("err", "this node will be unreachable in the cluster")
 		level.Warn(l).Log("err", "provide --cluster.advertise-address as a routable IP address or hostname")
 	} else if isAny(bindAddr) && advertiseHost == "" {
 		// memberlist doesn't advertise properly when the bind address is empty or unspecified.
+		// 如果bind address为空或者未指定，则memberlist不能advertise properly
 		level.Info(l).Log("msg", "setting advertise address explicitly", "addr", addr.String(), "port", bindPort)
 		advertiseHost = addr.String()
 		advertisePort = bindPort
 	}
 
 	// TODO(fabxc): generate human-readable but random names?
+	// 创建一个随机数作为peer的name
 	name, err := ulid.New(ulid.Now(), rand.New(rand.NewSource(time.Now().UnixNano())))
 	if err != nil {
 		return nil, err
@@ -180,8 +187,11 @@ func Create(
 		knownPeers:    knownPeers,
 	}
 
+	// 注册prometheus指标
 	p.register(reg)
 
+	// retransmit为已知的peers的二分之一
+	// 若结果小于3，则最后设置为3
 	retransmit := len(knownPeers) / 2
 	if retransmit < 3 {
 		retransmit = 3
@@ -200,10 +210,12 @@ func Create(
 	cfg.ProbeTimeout = probeTimeout
 	cfg.ProbeInterval = probeInterval
 	cfg.LogOutput = &logWriter{l: l}
+	// retransmit代表的就是gossip的节点的数目
 	cfg.GossipNodes = retransmit
 	cfg.UDPBufferSize = maxGossipPacketSize
 
 	if advertiseHost != "" {
+		// 设置config的AdvertiseAddr和AdvertisePort
 		cfg.AdvertiseAddr = advertiseHost
 		cfg.AdvertisePort = advertisePort
 		p.setInitialFailed(resolvedPeers, fmt.Sprintf("%s:%d", advertiseHost, advertisePort))
@@ -211,6 +223,7 @@ func Create(
 		p.setInitialFailed(resolvedPeers, bindAddr)
 	}
 
+	// 创建member list
 	ml, err := memberlist.Create(cfg)
 	if err != nil {
 		return nil, errors.Wrap(err, "create memberlist")
@@ -222,6 +235,7 @@ func Create(
 func (p *Peer) Join(
 	reconnectInterval time.Duration,
 	reconnectTimeout time.Duration) error {
+	// 加入到解析的peer中
 	n, err := p.mlist.Join(p.resolvedPeers)
 	if err != nil {
 		level.Warn(p.logger).Log("msg", "failed to join cluster", "err", err)
@@ -229,10 +243,12 @@ func (p *Peer) Join(
 			level.Info(p.logger).Log("msg", fmt.Sprintf("will retry joining cluster every %v", reconnectInterval.String()))
 		}
 	} else {
+		// 返回的是peer的数目
 		level.Debug(p.logger).Log("msg", "joined cluster", "peers", n)
 	}
 
 	if reconnectInterval != 0 {
+		// runPeriodicTask执行阶段性的任务
 		go p.runPeriodicTask(
 			reconnectInterval,
 			p.reconnect,
@@ -386,6 +402,7 @@ func (p *Peer) removeFailedPeers(timeout time.Duration) {
 
 func (p *Peer) reconnect() {
 	p.peerLock.RLock()
+	// 获取failedPeers
 	failedPeers := p.failedPeers
 	p.peerLock.RUnlock()
 
@@ -407,6 +424,7 @@ func (p *Peer) reconnect() {
 func (p *Peer) refresh() {
 	logger := log.With(p.logger, "msg", "refresh")
 
+	// 重新解析peers
 	resolvedPeers, err := resolvePeers(context.Background(), p.knownPeers, p.advertiseAddr, &net.Resolver{}, false)
 	if err != nil {
 		level.Debug(logger).Log("peers", p.knownPeers, "err", err)
@@ -423,8 +441,10 @@ func (p *Peer) refresh() {
 			}
 		}
 
+		// 如果peer不存在于member中
 		if !isPeerFound {
 			if _, err := p.mlist.Join([]string{peer}); err != nil {
+				// 加入peer
 				p.failedRefreshCounter.Inc()
 				level.Warn(logger).Log("result", "failure", "addr", peer)
 			} else {
@@ -505,11 +525,14 @@ func (p *Peer) peerUpdate(n *memberlist.Node) {
 // broadcast messages for the state can be sent.
 // AddState增加一个新的state，它会被gossiped，它返回一个channel，通过它state可以被广播发送
 func (p *Peer) AddState(key string, s State, reg prometheus.Registerer) *Channel {
+	// key只有两个，nfl或者sil
 	p.states[key] = s
 	send := func(b []byte) {
+		// 将b进行广播
 		p.delegate.bcast.QueueBroadcast(simpleBroadcast(b))
 	}
 	peers := func() []*memberlist.Node {
+		// 返回所有的节点情况
 		nodes := p.Peers()
 		for i, n := range nodes {
 			// 找到自己并且滤去
@@ -528,6 +551,7 @@ func (p *Peer) AddState(key string, s State, reg prometheus.Registerer) *Channel
 }
 
 // Leave the cluster, waiting up to timeout.
+// 离开cluster，等待timeout
 func (p *Peer) Leave(timeout time.Duration) error {
 	close(p.stopc)
 	level.Debug(p.logger).Log("msg", "leaving cluster")
@@ -540,6 +564,7 @@ func (p *Peer) Name() string {
 }
 
 // ClusterSize returns the current number of alive members in the cluster.
+// ClusterSize返回当前集群中的active members的数目
 func (p *Peer) ClusterSize() int {
 	return p.mlist.NumMembers()
 }
@@ -586,11 +611,13 @@ func (p *Peer) Self() *memberlist.Node {
 }
 
 // Peers returns the peers in the cluster.
+// Peers返回在集群中的peers的数目
 func (p *Peer) Peers() []*memberlist.Node {
 	return p.mlist.Members()
 }
 
 // Position returns the position of the peer in the cluster.
+// Position返回peer在当前集群中的位置
 func (p *Peer) Position() int {
 	all := p.Peers()
 	sort.Slice(all, func(i, j int) bool {
@@ -608,10 +635,14 @@ func (p *Peer) Position() int {
 }
 
 // Settle waits until the mesh is ready (and sets the appropriate internal state when it is).
+// Settle等待直到mesh准备好（并且设置合适的internal state）
 // The idea is that we don't want to start "working" before we get a chance to know most of the alerts and/or silences.
+// 目的是我们不想要开始"working"，在我们有机会知道大多数的alerts以及silence之前
 // Inspired from https://github.com/apache/cassandra/blob/7a40abb6a5108688fb1b10c375bb751cbb782ea4/src/java/org/apache/cassandra/gms/Gossiper.java
 // This is clearly not perfect or strictly correct but should prevent the alertmanager to send notification before it is obviously not ready.
+// 这显然是不完美的或者严格正确的，但是能够防治alertmanager在它显然准备好之前发送notification
 // This is especially important for those that do not have persistent storage.
+// 这对于那些没有远程存储的情况，显然是非常重要的
 func (p *Peer) Settle(ctx context.Context, interval time.Duration) {
 	const NumOkayRequired = 3
 	level.Info(p.logger).Log("msg", "Waiting for gossip to settle...", "interval", interval)
@@ -624,22 +655,25 @@ func (p *Peer) Settle(ctx context.Context, interval time.Duration) {
 		case <-ctx.Done():
 			elapsed := time.Since(start)
 			level.Info(p.logger).Log("msg", "gossip not settled but continuing anyway", "polls", totalPolls, "elapsed", elapsed)
+			// 关闭p.readyc，表示准备好了
 			close(p.readyc)
 			return
 		case <-time.After(interval):
 		}
 		elapsed := time.Since(start)
 		n := len(p.Peers())
-		// 最终，peers的数目要大于等于NumOkayRequired
+		// 最终，nOkay的数目要大于等于3次，即nPeers的数目三次不变
 		if nOkay >= NumOkayRequired {
 			level.Info(p.logger).Log("msg", "gossip settled; proceeding", "elapsed", elapsed)
 			break
 		}
+		// peer的数目保持三次不变，则认为稳定了
 		if n == nPeers {
 			nOkay++
 			level.Debug(p.logger).Log("msg", "gossip looks settled", "elapsed", elapsed)
 		} else {
 			nOkay = 0
+			// now是当前的peer的数目
 			level.Info(p.logger).Log("msg", "gossip not settled", "polls", totalPolls, "before", nPeers, "now", n, "elapsed", elapsed)
 		}
 		nPeers = n
@@ -650,15 +684,19 @@ func (p *Peer) Settle(ctx context.Context, interval time.Duration) {
 
 // State is a piece of state that can be serialized and merged with other
 // serialized state.
+// State是state的一部分，它可以被序列化并且和其他的serialized state合并
 type State interface {
 	// MarshalBinary serializes the underlying state.
+	// MarshalBinary序列化底层的state
 	MarshalBinary() ([]byte, error)
 
 	// Merge merges serialized state into the underlying state.
+	// Merge将serialized state合并到底层的state
 	Merge(b []byte) error
 }
 
 // We use a simple broadcast implementation in which items are never invalidated by others.
+// 我们实现了一个简单的broadcast，所有的items都不会被其他人认为是无效的
 type simpleBroadcast []byte
 
 func (b simpleBroadcast) Message() []byte                       { return []byte(b) }
@@ -699,6 +737,7 @@ func resolvePeers(ctx context.Context, peers []string, myAddress string, res *ne
 					return errors.Wrapf(err, "IP Addr lookup for peer %s", peer)
 				}
 
+				// 移除自身的ip地址
 				ips = removeMyAddr(ips, port, myAddress)
 				if len(ips) == 0 {
 					if !waitIfEmpty {
@@ -740,6 +779,7 @@ func hasNonlocal(clusterPeers []string) bool {
 		if host, _, err := net.SplitHostPort(peer); err == nil {
 			peer = host
 		}
+		// 存在不是local的地址
 		if ip := net.ParseIP(peer); ip != nil && !ip.IsLoopback() {
 			return true
 		} else if ip == nil && strings.ToLower(peer) != "localhost" {

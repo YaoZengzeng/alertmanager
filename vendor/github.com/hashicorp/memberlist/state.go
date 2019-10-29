@@ -21,6 +21,7 @@ const (
 )
 
 // Node represents a node in the cluster.
+// Node代表cluster中的一个node
 type Node struct {
 	Name string
 	Addr net.IP
@@ -46,6 +47,7 @@ func (n *Node) String() string {
 }
 
 // NodeState is used to manage our state view of another node
+// NodeState用来管理我们对另外一个节点的state view
 type nodeState struct {
 	Node
 	Incarnation uint32        // Last known incarnation number
@@ -79,6 +81,8 @@ func (f NoPingResponseError) Error() string {
 // Schedule is used to ensure the Tick is performed periodically. This
 // function is safe to call multiple times. If the memberlist is already
 // scheduled, then it won't do anything.
+// Schedule用于确保Tick会被阶段性地调用，这个函数可以安全地被调用多次，如果memberlist已经被
+// 调度了，那么它不会做任何事
 func (m *Memberlist) schedule() {
 	m.tickerLock.Lock()
 	defer m.tickerLock.Unlock()
@@ -486,10 +490,12 @@ func (m *Memberlist) resetNodes() {
 
 // gossip is invoked every GossipInterval period to broadcast our gossip
 // messages to a few random nodes.
+// gossip会在每个GossipInterval之后被调用，用于广播我们的gossip message到一系列的random nodes
 func (m *Memberlist) gossip() {
 	defer metrics.MeasureSince([]string{"memberlist", "gossip"}, time.Now())
 
 	// Get some random live, suspect, or recently dead nodes
+	// 随机获取一些存活的，可疑的或者最近死亡的nodes
 	m.nodeLock.RLock()
 	kNodes := kRandomNodes(m.config.GossipNodes, m.nodes, func(n *nodeState) bool {
 		if n.Name == m.config.Name {
@@ -510,6 +516,9 @@ func (m *Memberlist) gossip() {
 	m.nodeLock.RUnlock()
 
 	// Compute the bytes available
+	// 计算剩余的字节
+
+
 	bytesAvail := m.config.UDPBufferSize - compoundHeaderOverhead
 	if m.config.EncryptionEnabled() {
 		bytesAvail -= encryptOverhead(m.encryptionVersion())
@@ -564,10 +573,12 @@ func (m *Memberlist) pushPull() {
 }
 
 // pushPullNode does a complete state exchange with a specific node.
+// pushPullNode和给定的节点执行一次完整的state exchange
 func (m *Memberlist) pushPullNode(addr string, join bool) error {
 	defer metrics.MeasureSince([]string{"memberlist", "pushPullNode"}, time.Now())
 
 	// Attempt to send and receive with the node
+	// 试着在节点之前发送以及接受
 	remote, userState, err := m.sendAndReceiveState(addr, join)
 	if err != nil {
 		return err
@@ -837,6 +848,7 @@ func (m *Memberlist) refute(me *nodeState, accusedInc uint32) {
 
 // aliveNode is invoked by the network layer when we get a message about a
 // live node.
+// aliveNode会在我们收到一个live node的message的时候被调用
 func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()
@@ -1008,6 +1020,7 @@ func (m *Memberlist) aliveNode(a *alive, notify chan struct{}, bootstrap bool) {
 
 // suspectNode is invoked by the network layer when we get a message
 // about a suspect node
+// suspectNode是由network layer进行调用，当我们获取到一个可疑的node的message的时候
 func (m *Memberlist) suspectNode(s *suspect) {
 	m.nodeLock.Lock()
 	defer m.nodeLock.Unlock()

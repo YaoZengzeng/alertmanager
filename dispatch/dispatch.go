@@ -58,6 +58,7 @@ type Dispatcher struct {
 func NewDispatcher(
 	ap provider.Alerts,
 	r *Route,
+	// Stage就是Pipeline
 	s notify.Stage,
 	mk types.Marker,
 	to func(time.Duration) time.Duration,
@@ -80,12 +81,14 @@ func (d *Dispatcher) Run() {
 	d.done = make(chan struct{})
 
 	d.mtx.Lock()
+	// aggrGroups表示各个group，首先以Route作为key，之后再以group的Fingerprint作为key
 	d.aggrGroups = map[*Route]map[model.Fingerprint]*aggrGroup{}
 	d.mtx.Unlock()
 
 	// 创建相应的context和cancel函数
 	d.ctx, d.cancel = context.WithCancel(context.Background())
 
+	// 调用d.alerts.Subscribe()对告警进行订阅
 	d.run(d.alerts.Subscribe())
 	close(d.done)
 }
@@ -246,6 +249,7 @@ type notifyFunc func(context.Context, ...*types.Alert) bool
 // and inserts it.
 // processAlert决定一个alert应该落到哪个aggregation group并且插入它
 func (d *Dispatcher) processAlert(alert *types.Alert, route *Route) {
+	// 从labels中筛选出group labels
 	groupLabels := getGroupLabels(alert, route)
 
 	// 获取group labels的fingerprint
@@ -316,6 +320,7 @@ type aggrGroup struct {
 	logger   log.Logger
 	routeKey string
 
+	// 用于存储这个group中的所有告警
 	alerts  *store.Alerts
 	ctx     context.Context
 	cancel  func()
@@ -337,6 +342,7 @@ func newAggrGroup(ctx context.Context, labels model.LabelSet, r *Route, to func(
 	ag := &aggrGroup{
 		labels:   labels,
 		routeKey: r.Key(),
+		// opts为route group
 		opts:     &r.RouteOpts,
 		// timeout是一个函数，根据输入的time.Duration，返回一个time.Duration
 		timeout:  to,
@@ -378,6 +384,7 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 		select {
 		// ag.next.C开始是groupwait，后来是groupinterval
 		case now := <-ag.next.C:
+			// 将信息都存放在group中
 			// Give the notifications time until the next flush to
 			// finish before terminating them.
 			// 给定notifications time直到下一次flush结束，在终止它们之前
@@ -385,7 +392,9 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 
 			// The now time we retrieve from the ticker is the only reliable
 			// point of time reference for the subsequent notification pipeline.
+			// 从ticker中取得的now time是唯一可靠的time reference对于之后的notification pipeline
 			// Calculating the current time directly is prone to flaky behavior,
+			// 直接计算current time会易于产生flaky behavior
 			// which usually only becomes apparent in tests.
 			// 在context中添加now
 			ctx = notify.WithNow(ctx, now)
@@ -406,6 +415,7 @@ func (ag *aggrGroup) run(nf notifyFunc) {
 			ag.mtx.Unlock()
 
 			ag.flush(func(alerts ...*types.Alert) bool {
+				// 调用通知函数，发送通知
 				return nf(ctx, alerts...)
 			})
 
@@ -478,6 +488,7 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 	// 调用notify函数对alertsSlice进行通知
 	// 后期每隔groupinterval就进行flush
 	if notify(alertsSlice...) {
+		// 如果flush成功了
 		for _, a := range alertsSlice {
 			// Only delete if the fingerprint has not been inserted
 			// again since we notified about it.
@@ -487,6 +498,7 @@ func (ag *aggrGroup) flush(notify func(...*types.Alert) bool) {
 			if err != nil {
 				// This should only happen if the Alert was
 				// deleted from the store during the flush.
+				// 这之会在flush期间Alert被删除，这只情况下发生
 				level.Error(ag.logger).Log("msg", "failed to get alert", "err", err)
 				continue
 			}

@@ -78,8 +78,10 @@ var xxx_messageInfo_Receiver proto.InternalMessageInfo
 // Entry维护了一个发送到receiver的成功的notification
 type Entry struct {
 	// The key identifying the dispatching group.
+	// key用于标识dispatching group
 	GroupKey []byte `protobuf:"bytes,1,opt,name=group_key,json=groupKey,proto3" json:"group_key,omitempty"`
 	// The receiver that was notified.
+	// 通知的receiver
 	Receiver *Receiver `protobuf:"bytes,2,opt,name=receiver,proto3" json:"receiver,omitempty"`
 	// Hash over the state of the group at notification time.
 	// Deprecated in favor of FiringAlerts field, but kept for compatibility.

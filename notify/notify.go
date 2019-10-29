@@ -540,10 +540,14 @@ func (n *DedupStage) needsUpdate(entry *nflogpb.Entry, firing, resolved map[uint
 		// alert, it means that some alerts have been fired and resolved during the
 		// last interval. In this case, there is no need to notify the receiver
 		// since it doesn't know about them.
+		// 如果当前的alert group以及last notification没有包含firing alert，这意味着
+		// 有些alerts已经fired了并且resolved在上一个interval，在这种情况下，没有必要再
+		// 通知receiver，因为它不知道它们
 		return len(entry.FiringAlerts) > 0
 	}
 
 	if n.conf.SendResolved() && !entry.IsResolvedSubset(resolved) {
+		// 如果配置了发送已消除的并且当前的resolved alerts不是上一次通知时的子集，则返回true
 		return true
 	}
 
@@ -601,7 +605,9 @@ func (n *DedupStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 		return ctx, nil, fmt.Errorf("unexpected entry result size %d", len(entries))
 	}
 	// 根据entry解析是否需要update
+	// 如果需要，则说明有新的告警需要发送
 	if n.needsUpdate(entry, firingSet, resolvedSet, repeatInterval) {
+		// 需要更新，则直接返回alerts
 		return ctx, alerts, nil
 	}
 	return ctx, nil, nil

@@ -275,6 +275,7 @@ func (s state) MarshalBinary() ([]byte, error) {
 }
 
 func decodeState(r io.Reader) (state, error) {
+	// 从reader中解析出MeshEntry
 	st := state{}
 	for {
 		var e pb.MeshEntry
@@ -444,6 +445,7 @@ func (l *Log) Log(r *pb.Receiver, gkey string, firingAlerts, resolvedAlerts []ui
 			ResolvedAlerts: resolvedAlerts,
 		},
 		// ExpiresAt为当前时间加上l.retentation
+		// retention默认为120小时
 		ExpiresAt: now.Add(l.retention),
 	}
 
@@ -460,6 +462,7 @@ func (l *Log) Log(r *pb.Receiver, gkey string, firingAlerts, resolvedAlerts []ui
 }
 
 // GC implements the Log interface.
+// GC实现了Log接口
 func (l *Log) GC() (int, error) {
 	start := time.Now()
 	defer func() { l.metrics.gcDuration.Observe(time.Since(start).Seconds()) }()
@@ -499,6 +502,7 @@ func (l *Log) Query(params ...QueryParam) ([]*pb.Entry, error) {
 		}
 		// TODO(fabxc): For now our only query mode is the most recent entry for a
 		// receiver/group_key combination.
+		// 现在，我们唯一的query mode就是最近的receiver/group_key的组合
 		if q.recv == nil || q.groupKey == "" {
 			// TODO(fabxc): allow more complex queries in the future.
 			// How to enable pagination?
@@ -576,6 +580,7 @@ func (l *Log) Merge(b []byte) error {
 	now := l.now()
 
 	for _, e := range st {
+		// 遍历各个state进行合并
 		if merged := l.st.merge(e, now); merged && !cluster.OversizedMessage(b) {
 			// If this is the first we've seen the message and it's
 			// not oversized, gossip it to other nodes. We don't
@@ -593,6 +598,8 @@ func (l *Log) Merge(b []byte) error {
 
 // SetBroadcast sets a broadcast callback that will be invoked with serialized state
 // on updates.
+// SetBroadcast设置一个broadcast callback，它会在serialized state更新的时候被调用
+// 它会将数据进行广播到全网
 func (l *Log) SetBroadcast(f func([]byte)) {
 	l.mtx.Lock()
 	l.broadcast = f

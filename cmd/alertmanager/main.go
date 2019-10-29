@@ -120,6 +120,7 @@ func run() int {
 				Default(defaultClusterAddr).String()
 		clusterAdvertiseAddr = kingpin.Flag("cluster.advertise-address", "Explicit address to advertise in cluster.").String()
 		peers                = kingpin.Flag("cluster.peer", "Initial peers (may be repeated).").Strings()
+		// peer之间发送通知的等待时间
 		peerTimeout          = kingpin.Flag("cluster.peer-timeout", "Time to wait between peers to send notifications.").Default("15s").Duration()
 		gossipInterval       = kingpin.Flag("cluster.gossip-interval", "Interval between sending gossip messages. By lowering this value (more frequent) gossip messages are propagated across the cluster more quickly at the expense of increased bandwidth.").Default(cluster.DefaultGossipInterval.String()).Duration()
 		pushPullInterval     = kingpin.Flag("cluster.pushpull-interval", "Interval for gossip state syncs. Setting this interval lower (more frequent) will increase convergence speeds across larger clusters at the expense of increased bandwidth usage.").Default(cluster.DefaultPushPullInterval.String()).Duration()
@@ -437,6 +438,7 @@ func run() int {
 
 // clusterWait returns a function that inspects the current peer state and returns
 // a duration of one base timeout for each peer with a higher ID than ourselves.
+// clusterWait返回一个函数，它检测当前的peer state并且返回一个duration，
 func clusterWait(p *cluster.Peer, timeout time.Duration) func() time.Duration {
 	return func() time.Duration {
 		return time.Duration(p.Position()) * timeout

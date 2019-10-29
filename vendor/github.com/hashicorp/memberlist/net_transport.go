@@ -26,6 +26,7 @@ const (
 type NetTransportConfig struct {
 	// BindAddrs is a list of addresses to bind to for both TCP and UDP
 	// communications.
+	// BindAddrs时一系列绑定的地址同时用于TCP和UDP通信
 	BindAddrs []string
 
 	// BindPort is the port to listen on, for each address above.
@@ -37,6 +38,7 @@ type NetTransportConfig struct {
 
 // NetTransport is a Transport implementation that uses connectionless UDP for
 // packet operations, and ad-hoc TCP connections for stream operations.
+// NetTransport是一个Transport的实现，它用无连接的UDP用于packet operations以及ad-hoc TCP连接用于stream operations
 type NetTransport struct {
 	config       *NetTransportConfig
 	packetCh     chan *Packet
@@ -50,6 +52,8 @@ type NetTransport struct {
 
 // NewNetTransport returns a net transport with the given configuration. On
 // success all the network listeners will be created and listening.
+// NewNetTransport用给定的配置返回一个net transport，成功的话，所有的network listeners都会被创建
+// 并且开始监听
 func NewNetTransport(config *NetTransportConfig) (*NetTransport, error) {
 	// If we reject the empty list outright we can assume that there's at
 	// least one listener of each type later during operation.

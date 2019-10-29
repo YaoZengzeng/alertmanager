@@ -536,11 +536,13 @@ type Route struct {
 
 	GroupByStr []string          `yaml:"group_by,omitempty" json:"group_by,omitempty"`
 	GroupBy    []model.LabelName `yaml:"-" json:"-"`
+	// 是否根据所有的label作为分组依据，即每个alert都独自成组
 	GroupByAll bool              `yaml:"-" json:"-"`
 
 	Match    map[string]string `yaml:"match,omitempty" json:"match,omitempty"`
 	MatchRE  map[string]Regexp `yaml:"match_re,omitempty" json:"match_re,omitempty"`
 	Continue bool              `yaml:"continue,omitempty" json:"continue,omitempty"`
+	// 一系列的子路由
 	Routes   []*Route          `yaml:"routes,omitempty" json:"routes,omitempty"`
 
 	GroupWait      *model.Duration `yaml:"group_wait,omitempty" json:"group_wait,omitempty"`

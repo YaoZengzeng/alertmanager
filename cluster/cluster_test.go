@@ -39,6 +39,7 @@ func TestClusterJoinAndReconnect(t *testing.T) {
 
 func testJoinLeave(t *testing.T) {
 	logger := log.NewNopLogger()
+	// 创建第一个peer
 	p, err := Create(
 		logger,
 		prometheus.NewRegistry(),
@@ -62,10 +63,12 @@ func testJoinLeave(t *testing.T) {
 	require.False(t, p.Ready())
 	require.Equal(t, p.Status(), "settling")
 	go p.Settle(context.Background(), 0*time.Second)
+	// 等待peer，seattle成功
 	p.WaitReady()
 	require.Equal(t, p.Status(), "ready")
 
 	// Create the peer who joins the first.
+	// 创建第二个peer并且加入第一个
 	p2, err := Create(
 		logger,
 		prometheus.NewRegistry(),
@@ -81,6 +84,7 @@ func testJoinLeave(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.NotNil(t, p2)
+	// 加入cluster
 	err = p2.Join(
 		DefaultReconnectInterval,
 		DefaultReconnectTimeout,
@@ -89,6 +93,7 @@ func testJoinLeave(t *testing.T) {
 	go p2.Settle(context.Background(), 0*time.Second)
 
 	require.Equal(t, 2, p.ClusterSize())
+	// p2离开cluster
 	p2.Leave(0 * time.Second)
 	require.Equal(t, 1, p.ClusterSize())
 	require.Equal(t, 1, len(p.failedPeers))

@@ -14,6 +14,7 @@ func init() {
 // 6890 and has a default route.  If the system can't determine its IP address
 // or find an RFC 6890 IP address, an empty string will be returned instead.
 // This function is the `eval` equivalent of:
+// GetPrivateIP返回有着默认路由的IP地址
 //
 // ```
 // $ sockaddr eval -r '{{GetPrivateInterfaces | attr "address"}}'

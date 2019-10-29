@@ -28,6 +28,7 @@ func (m *Entry) IsFiringSubset(subset map[uint64]struct{}) bool {
 
 // IsResolvedSubset returns whether the given subset is a subset of the alerts
 // that were resolved at the time of the last notification.
+// IsResolvedSubset返回给定的subset是不是上一次通知的时候已经resolved的alerts的一个子集
 func (m *Entry) IsResolvedSubset(subset map[uint64]struct{}) bool {
 	set := map[uint64]struct{}{}
 	for i := range m.ResolvedAlerts {
@@ -38,6 +39,7 @@ func (m *Entry) IsResolvedSubset(subset map[uint64]struct{}) bool {
 }
 
 func isSubset(set, subset map[uint64]struct{}) bool {
+	// 如果subset里面的元素都在set里面，则返回true，因此对于一个alert一个group的我们来说，新的告警永远不会触发
 	for k := range subset {
 		_, exists := set[k]
 		if !exists {

@@ -83,6 +83,8 @@ type ping struct {
 	// Node is sent so the target can verify they are
 	// the intended recipient. This is to protect again an agent
 	// restart with a new name.
+	// Node也会被发送，这样target就能确定它们就是目标接受者，这可以用来防止
+	// 一个agent重启一个新的name
 	Node string
 }
 
@@ -96,6 +98,7 @@ type indirectPingReq struct {
 }
 
 // ack response is sent for a ping
+// ack response是未ping发送的
 type ackResp struct {
 	SeqNo   uint32
 	Payload []byte
@@ -122,6 +125,7 @@ type suspect struct {
 
 // alive is broadcast when we know a node is alive.
 // Overloaded for nodes joining
+// alive是一个广播，当我们知道一个node处于alive
 type alive struct {
 	Incarnation uint32
 	Node        string
@@ -136,6 +140,7 @@ type alive struct {
 
 // dead is broadcast when we confirm a node is dead
 // Overloaded for nodes leaving
+// dead是一个广播，当我们确认一个node已经死了
 type dead struct {
 	Incarnation uint32
 	Node        string
@@ -144,6 +149,7 @@ type dead struct {
 
 // pushPullHeader is used to inform the
 // otherside how many states we are transferring
+// PushPullHeader是用于通知otherside，我们正在传输多少states
 type pushPullHeader struct {
 	Nodes        int
 	UserStateLen int  // Encodes the byte lengh of user state
@@ -151,12 +157,15 @@ type pushPullHeader struct {
 }
 
 // userMsgHeader is used to encapsulate a userMsg
+// userMsgHeader用于封装一个userMsg
 type userMsgHeader struct {
+	// UserMsgLen编码了user state的字节长度
 	UserMsgLen int // Encodes the byte lengh of user state
 }
 
 // pushNodeState is used for pushPullReq when we are
 // transferring out node states
+// pushNodeState是我们在发送node states的时候使用
 type pushNodeState struct {
 	Name        string
 	Addr        []byte
@@ -193,6 +202,7 @@ func (m *Memberlist) encryptionVersion() encryptionVersion {
 
 // streamListen is a long running goroutine that pulls incoming streams from the
 // transport and hands them off for processing.
+// streamListen是一个长时间运行的goroutine，它从transport拉取incoming streams并且将它们进行处理
 func (m *Memberlist) streamListen() {
 	for {
 		select {
@@ -206,6 +216,7 @@ func (m *Memberlist) streamListen() {
 }
 
 // handleConn handles a single incoming stream connection from the transport.
+// handleConn处理来自transport的单个incoming stream connection
 func (m *Memberlist) handleConn(conn net.Conn) {
 	m.logger.Printf("[DEBUG] memberlist: Stream connection %s", LogConn(conn))
 
@@ -250,6 +261,7 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 			return
 		}
 
+		// PushPullMsg是用于读取远程节点的状态
 		join, remoteNodes, userState, err := m.readRemoteState(bufConn, dec)
 		if err != nil {
 			m.logger.Printf("[ERR] memberlist: Failed to read remote state: %s %s", err, LogConn(conn))
@@ -296,6 +308,7 @@ func (m *Memberlist) handleConn(conn net.Conn) {
 
 // packetListen is a long running goroutine that pulls packets out of the
 // transport and hands them off for processing.
+// packetListen是一个长期运行的goroutine，它从transport中拉取packets并且对它们进行处理
 func (m *Memberlist) packetListen() {
 	for {
 		select {
@@ -415,6 +428,8 @@ func (m *Memberlist) getNextMessage() (msgHandoff, bool) {
 // packetHandler is a long running goroutine that processes messages received
 // over the packet interface, but is decoupled from the listener to avoid
 // blocking the listener which may cause ping/ack messages to be delayed.
+// packetHandler是一个长期运行的goroutine，处理从packet interface接收到的messages，但是和listener
+// 解耦从而防止阻塞listener，可能导致ping/ack message被延迟
 func (m *Memberlist) packetHandler() {
 	for {
 		select {
@@ -594,6 +609,7 @@ func (m *Memberlist) handleDead(buf []byte, from net.Addr) {
 }
 
 // handleUser is used to notify channels of incoming user data
+// handleUser用于将incoming user data进行通知
 func (m *Memberlist) handleUser(buf []byte, from net.Addr) {
 	d := m.config.Delegate
 	if d != nil {
@@ -655,6 +671,7 @@ func (m *Memberlist) sendMsg(addr string, msg []byte) error {
 
 // rawSendMsgPacket is used to send message via packet to another host without
 // modification, other than compression or encryption if enabled.
+// rawSendMsgPacket用于通过packet发送message到另一个host而不做修改，除了压缩以及加密，如果需要的话
 func (m *Memberlist) rawSendMsgPacket(addr string, node *Node, msg []byte) error {
 	// Check if we have compression enabled
 	if m.config.EnableCompression {
@@ -686,6 +703,7 @@ func (m *Memberlist) rawSendMsgPacket(addr string, node *Node, msg []byte) error
 
 	// Add a CRC to the end of the payload if the recipient understands
 	// ProtocolVersion >= 5
+	// 如果recipient理解大于等于5的ProtocolVersion，则在负载的尾部增加一个CRC
 	if node != nil && node.PMax >= 5 {
 		crc := crc32.ChecksumIEEE(msg)
 		header := make([]byte, 5, 5+len(msg))
@@ -708,12 +726,14 @@ func (m *Memberlist) rawSendMsgPacket(addr string, node *Node, msg []byte) error
 	}
 
 	metrics.IncrCounter([]string{"memberlist", "udp", "sent"}, float32(len(msg)))
+	// 调用Transport接口进行发送
 	_, err := m.transport.WriteTo(msg, addr)
 	return err
 }
 
 // rawSendMsgStream is used to stream a message to another host without
 // modification, other than applying compression and encryption if enabled.
+// rawSendMsgStream用于将一个message流传输到另一个host而不做任何修改，除了进行压缩或者加密
 func (m *Memberlist) rawSendMsgStream(conn net.Conn, sendBuf []byte) error {
 	// Check if compresion is enabled
 	if m.config.EnableCompression {
@@ -774,8 +794,10 @@ func (m *Memberlist) sendUserMsg(addr string, sendBuf []byte) error {
 
 // sendAndReceiveState is used to initiate a push/pull over a stream with a
 // remote host.
+// sendAndReceiveState用于初始化一个push/pull，通过和一个remote host的stream
 func (m *Memberlist) sendAndReceiveState(addr string, join bool) ([]pushNodeState, []byte, error) {
 	// Attempt to connect
+	// 创建连接，初始化push/pull sync
 	conn, err := m.transport.DialTimeout(addr, m.config.TCPTimeout)
 	if err != nil {
 		return nil, nil, err
@@ -785,11 +807,13 @@ func (m *Memberlist) sendAndReceiveState(addr string, join bool) ([]pushNodeStat
 	metrics.IncrCounter([]string{"memberlist", "tcp", "connect"}, 1)
 
 	// Send our state
+	// 发送我们本地的state
 	if err := m.sendLocalState(conn, join); err != nil {
 		return nil, nil, err
 	}
 
 	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
+	// 从连接中读取stream
 	msgType, bufConn, dec, err := m.readStream(conn)
 	if err != nil {
 		return nil, nil, err
@@ -804,22 +828,26 @@ func (m *Memberlist) sendAndReceiveState(addr string, join bool) ([]pushNodeStat
 	}
 
 	// Quit if not push/pull
+	// 期望获取pushPullMsg
 	if msgType != pushPullMsg {
 		err := fmt.Errorf("received invalid msgType (%d), expected pushPullMsg (%d) %s", msgType, pushPullMsg, LogConn(conn))
 		return nil, nil, err
 	}
 
 	// Read remote state
+	// 读取远程的state
 	_, remoteNodes, userState, err := m.readRemoteState(bufConn, dec)
 	return remoteNodes, userState, err
 }
 
 // sendLocalState is invoked to send our local state over a stream connection.
+// sendLocalState会被调用用于发送我们的local state到一个stream connection
 func (m *Memberlist) sendLocalState(conn net.Conn, join bool) error {
 	// Setup a deadline
 	conn.SetDeadline(time.Now().Add(m.config.TCPTimeout))
 
 	// Prepare the local node state
+	// 准备local node state
 	m.nodeLock.RLock()
 	localNodes := make([]pushNodeState, len(m.nodes))
 	for idx, n := range m.nodes {
@@ -837,8 +865,10 @@ func (m *Memberlist) sendLocalState(conn net.Conn, join bool) error {
 	m.nodeLock.RUnlock()
 
 	// Get the delegate state
+	// 获取delegate state
 	var userData []byte
 	if m.config.Delegate != nil {
+		// Delegate的LocalState是用户提供的数据
 		userData = m.config.Delegate.LocalState(join)
 	}
 
@@ -846,11 +876,14 @@ func (m *Memberlist) sendLocalState(conn net.Conn, join bool) error {
 	bufConn := bytes.NewBuffer(nil)
 
 	// Send our node state
+	// 发送我们的node state
+	// 首先写入header，表明Nodes的数目以及UserStateLen表示用户数据的长度
 	header := pushPullHeader{Nodes: len(localNodes), UserStateLen: len(userData), Join: join}
 	hd := codec.MsgpackHandle{}
 	enc := codec.NewEncoder(bufConn, &hd)
 
 	// Begin state push
+	// 开始推送
 	if _, err := bufConn.Write([]byte{byte(pushPullMsg)}); err != nil {
 		return err
 	}
@@ -865,6 +898,7 @@ func (m *Memberlist) sendLocalState(conn net.Conn, join bool) error {
 	}
 
 	// Write the user state as well
+	// 同时也写入用户数据
 	if userData != nil {
 		if _, err := bufConn.Write(userData); err != nil {
 			return err
@@ -932,6 +966,7 @@ func (m *Memberlist) decryptRemoteState(bufConn io.Reader) ([]byte, error) {
 
 // readStream is used to read from a stream connection, decrypting and
 // decompressing the stream if necessary.
+// readStream用于从stream connection中进行读取，有必要的话解析以及解压stream
 func (m *Memberlist) readStream(conn net.Conn) (messageType, io.Reader, *codec.Decoder, error) {
 	// Created a buffered reader
 	var bufConn io.Reader = bufio.NewReader(conn)
@@ -992,6 +1027,7 @@ func (m *Memberlist) readStream(conn net.Conn) (messageType, io.Reader, *codec.D
 }
 
 // readRemoteState is used to read the remote state from a connection
+// readRemoteState用于从连接中读取remote state
 func (m *Memberlist) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (bool, []pushNodeState, []byte, error) {
 	// Read the push/pull header
 	var header pushPullHeader
@@ -1036,6 +1072,7 @@ func (m *Memberlist) readRemoteState(bufConn io.Reader, dec *codec.Decoder) (boo
 }
 
 // mergeRemoteState is used to merge the remote state with our local state
+// mergeRemoteState用于将remote state和local state合并
 func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, userBuf []byte) error {
 	if err := m.verifyProtocol(remoteNodes); err != nil {
 		return err
@@ -1064,9 +1101,11 @@ func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, us
 	}
 
 	// Merge the membership state
+	// 合并membership state
 	m.mergeState(remoteNodes)
 
 	// Invoke the delegate for user state
+	// 调用delegate用于合并user state
 	if userBuf != nil && m.config.Delegate != nil {
 		m.config.Delegate.MergeRemoteState(userBuf, join)
 	}
@@ -1074,6 +1113,7 @@ func (m *Memberlist) mergeRemoteState(join bool, remoteNodes []pushNodeState, us
 }
 
 // readUserMsg is used to decode a userMsg from a stream.
+// readUserMsg用于从stream中解码一个userMsg
 func (m *Memberlist) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 	// Read the user message header
 	var header userMsgHeader
@@ -1097,6 +1137,7 @@ func (m *Memberlist) readUserMsg(bufConn io.Reader, dec *codec.Decoder) error {
 
 		d := m.config.Delegate
 		if d != nil {
+			// 调用Delegate的NotifyMsg进行通知
 			d.NotifyMsg(userBuf)
 		}
 	}

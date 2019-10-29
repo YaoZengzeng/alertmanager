@@ -98,6 +98,7 @@ func NewChannel(
 
 // handleOverSizedMessages prevents memberlist from opening too many parallel
 // TCP connections to its peers.
+// handleOverSizedMessages防止memberlist打开太多parallel TCP connections到它的peers
 func (c *Channel) handleOverSizedMessages(stopc chan struct{}) {
 	var wg sync.WaitGroup
 	for {
@@ -109,6 +110,7 @@ func (c *Channel) handleOverSizedMessages(stopc chan struct{}) {
 					defer wg.Done()
 					c.oversizeGossipMessageSentTotal.Inc()
 					start := time.Now()
+					// 发送oversized message
 					if err := c.sendOversize(n, b); err != nil {
 						level.Debug(c.logger).Log("msg", "failed to send reliable", "key", c.key, "node", n, "err", err)
 						c.oversizeGossipMessageFailureTotal.Inc()
@@ -128,6 +130,7 @@ func (c *Channel) handleOverSizedMessages(stopc chan struct{}) {
 // Broadcast enqueues a message for broadcasting.
 // Braodcast将一个message入队用于发送
 func (c *Channel) Broadcast(b []byte) {
+	// 将channel的key，也就是nfl或者sil写入
 	b, err := proto.Marshal(&clusterpb.Part{Key: c.key, Data: b})
 	if err != nil {
 		return
@@ -141,12 +144,14 @@ func (c *Channel) Broadcast(b []byte) {
 			c.oversizeGossipMessageDroppedTotal.Inc()
 		}
 	} else {
+		// 调用send方法，将结果序列化的信息发送
 		c.send(b)
 	}
 }
 
 // OversizedMessage indicates whether or not the byte payload should be sent
 // via TCP.
+// OversizedMessage表示负载是否需要通过TCP进行发送
 func OversizedMessage(b []byte) bool {
 	return len(b) > maxGossipPacketSize/2
 }
