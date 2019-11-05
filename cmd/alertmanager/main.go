@@ -216,6 +216,7 @@ func run() int {
 	if peer != nil {
 		// 对于silence也设置一个state
 		c := peer.AddState("sil", silences, prometheus.DefaultRegisterer)
+		// 设置silence的Broadcast函数
 		silences.SetBroadcast(c.Broadcast)
 	}
 
@@ -223,6 +224,7 @@ func run() int {
 	// 在router可能发送updates之前启动provider
 	wg.Add(1)
 	go func() {
+		// 调用silences的Maintenance函数
 		silences.Maintenance(15*time.Minute, filepath.Join(*dataDir, "silences"), stopc)
 		wg.Done()
 	}()
@@ -296,6 +298,7 @@ func run() int {
 	waitFunc := func() time.Duration { return 0 }
 	if peer != nil {
 		// 如果peer不为nil，重新设置waitFunc为clusterWait
+		// 即根据peer在集群中的位置，等待position * peerTimeout
 		waitFunc = clusterWait(peer, *peerTimeout)
 	}
 	timeoutFunc := func(d time.Duration) time.Duration {

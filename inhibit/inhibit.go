@@ -70,7 +70,7 @@ func (ih *Inhibitor) run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case a := <-it.Next():
-			// 遍历alert
+			// 遍历订阅的alert
 			if err := it.Err(); err != nil {
 				level.Error(ih.logger).Log("msg", "Error iterating alerts", "err", err)
 				continue
@@ -105,6 +105,7 @@ func (ih *Inhibitor) Run() {
 
 	for _, rule := range ih.rules {
 		// 运行每个inhibitor的rules
+		// scache中包含的是符合source的alerts
 		rule.scache.Run(runCtx)
 	}
 
@@ -150,6 +151,7 @@ func (ih *Inhibitor) Mutes(lset model.LabelSet) bool {
 		// need to exclude inhibiting alerts for which the same is true.
 		// 如果我们到了这里，说明target side匹配，如果source side也匹配，我们需要排除inhibiting alerts
 		if inhibitedByFP, eq := r.hasEqual(lset, r.SourceMatchers.Match(lset)); eq {
+			// 第一个参数被第二个参数抑制
 			ih.marker.SetInhibited(fp, inhibitedByFP.String())
 			return true
 		}
@@ -215,8 +217,10 @@ func NewInhibitRule(cr *config.InhibitRule) *InhibitRule {
 	}
 
 	return &InhibitRule{
+		// 一系列的matchers
 		SourceMatchers: sourcem,
 		TargetMatchers: targetm,
+		// 一系列需要相等的label
 		Equal:          equal,
 		// 构建store.NewAlerts进行缓存
 		scache:         store.NewAlerts(15 * time.Minute),
@@ -240,6 +244,7 @@ Outer:
 		}
 		// rule里面equal中的label必须匹配
 		for n := range r.Equal {
+			// 已经firing的alerts和lset的equal指定的label必须匹配
 			if a.Labels[n] != lset[n] {
 				continue Outer
 			}
@@ -249,6 +254,7 @@ Outer:
 		if excludeTwoSidedMatch && r.TargetMatchers.Match(a.Labels) {
 			continue Outer
 		}
+		// 如果到这一步，说明已经完全匹配了，可以将进行抑制的alert的fingerprint返回
 		return a.Fingerprint(), true
 	}
 	return model.Fingerprint(0), false

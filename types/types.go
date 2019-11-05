@@ -39,7 +39,7 @@ const (
 // silences while InhibitedBy may contain only a subset of the inhibiting alerts
 // – in practice exactly one ID. (This somewhat confusing semantics might change
 // in the future.)
-// AlertStatus存储了一个alert的状态，包括静默了这个alert的silences IDs以及其他已知了这个
+// AlertStatus存储了一个alert的状态，包括静默了这个alert的silences IDs以及其他抑制了这个
 // alert的其他alert，需要注意的是，SilencedBy应该包含所有的相关的silences，然而InhibitedBy
 // 可能只包含inhibiting alerts的一个子集，在实践中只有一个ID
 type AlertStatus struct {
@@ -66,6 +66,9 @@ type Marker interface {
 	// silences. If no ID is provided and InhibitedBy is already empty, this
 	// call is equivalent to SetActive. Otherwise, it sets
 	// AlertStateSuppressed.
+	// SetSilenced用提供的silences的IDs替换之前的SilencedBy，包括silences state的version number
+	// 提供的IDs应该包含完整的相关的silences，如果没有提供ID并且InhibitedBy为空，这个调用
+	// 和SetActive等效，否则，这就是设置AlertStateSuppressed
 	SetSilenced(alert model.Fingerprint, version int, silenceIDs ...string)
 	// SetInhibited replaces the previous InhibitedBy by the provided IDs of
 	// alerts. In contrast to SetSilenced, the set of provided IDs is not
@@ -74,6 +77,7 @@ type Marker interface {
 	// this expectation might change in the future.) If no ID is provided and
 	// SilencedBy is already empty, this call is equivalent to
 	// SetActive. Otherwise, it sets AlertStateSuppressed.
+	// SetInhibited和SetSilenced类似，但是不包含完整的inhibiting alerts，一般alertIDs的数目为与1个或者0个
 	SetInhibited(alert model.Fingerprint, alertIDs ...string)
 
 	// Count alerts of the given state(s). With no state provided, count all
@@ -186,6 +190,7 @@ func (m *memMarker) SetSilenced(alert model.Fingerprint, version int, ids ...str
 		return
 	}
 
+	// 设置SilencedBy
 	s.State = AlertStateSuppressed
 	s.SilencedBy = ids
 
@@ -193,6 +198,7 @@ func (m *memMarker) SetSilenced(alert model.Fingerprint, version int, ids ...str
 }
 
 // SetInhibited implements Marker.
+// 第一个参数被第二个参数抑制
 func (m *memMarker) SetInhibited(alert model.Fingerprint, ids ...string) {
 	m.mtx.Lock()
 
@@ -209,6 +215,7 @@ func (m *memMarker) SetInhibited(alert model.Fingerprint, ids ...string) {
 	// 否则，将它设置为AlertStateUnprocessed
 	if len(ids) == 0 && len(s.SilencedBy) == 0 {
 		m.mtx.Unlock()
+		// 当没有相关的inihibited ids或者silence，则设置alert为active
 		m.SetActive(alert)
 		return
 	}
@@ -251,6 +258,7 @@ func (m *memMarker) Status(alert model.Fingerprint) AlertStatus {
 	if !found {
 		// 如果没有在Marker中找到，则设置为unprocessed
 		s = &AlertStatus{
+			// 设置为AlertStateUnprocessed
 			State:       AlertStateUnprocessed,
 			SilencedBy:  []string{},
 			InhibitedBy: []string{},
@@ -488,6 +496,7 @@ type Silence struct {
 
 // Expired return if the silence is expired
 // meaning that both StartsAt and EndsAt are equal
+// 如果StartsAt和EndsAt相等，则意味着silence已经过时了
 func (s *Silence) Expired() bool {
 	return s.StartsAt.Equal(s.EndsAt)
 }

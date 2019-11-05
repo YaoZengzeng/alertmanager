@@ -412,6 +412,7 @@ func receiverKey(r *pb.Receiver) string {
 
 // stateKey returns a string key for a log entry consisting of the group key
 // and receiver.
+// stateKey返回一个string key作为log entry，由group key和receiver组成
 func stateKey(k string, r *pb.Receiver) string {
 	return fmt.Sprintf("%s:%s", k, receiverKey(r))
 }
@@ -441,6 +442,7 @@ func (l *Log) Log(r *pb.Receiver, gkey string, firingAlerts, resolvedAlerts []ui
 			Receiver:       r,
 			GroupKey:       []byte(gkey),
 			Timestamp:      now,
+			// 记录firing alerts以及resolved alerts的哈希值
 			FiringAlerts:   firingAlerts,
 			ResolvedAlerts: resolvedAlerts,
 		},

@@ -616,6 +616,7 @@ type InhibitRule struct {
 	SourceMatch map[string]string `yaml:"source_match,omitempty" json:"source_match,omitempty"`
 	// SourceMatchRE defines pairs like SourceMatch but does regular expression
 	// matching.
+	// SourceMatchRE定义了和SourceMatch类似的pairs，但是使用正则表达式进行匹配
 	SourceMatchRE map[string]Regexp `yaml:"source_match_re,omitempty" json:"source_match_re,omitempty"`
 	// TargetMatch defines a set of labels that have to equal the given
 	// value for target alerts.

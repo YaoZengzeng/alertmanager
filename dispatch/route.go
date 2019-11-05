@@ -27,6 +27,7 @@ import (
 
 // DefaultRouteOpts are the defaulting routing options which apply
 // to the root route of a routing tree.
+// DefaultRouteOpts是默认的路由选项，它会应用到routing tree到根节点
 var DefaultRouteOpts = RouteOpts{
 	GroupWait:      30 * time.Second,
 	GroupInterval:  5 * time.Minute,

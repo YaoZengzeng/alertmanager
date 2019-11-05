@@ -154,6 +154,7 @@ type Silence struct {
 	// 对于一个silence，一系列的matchers都要为true，才能影响一个给定的label set
 	Matchers []*Matcher `protobuf:"bytes,2,rep,name=matchers,proto3" json:"matchers,omitempty"`
 	// The time range during which the silence is active.
+	// silence active的时间
 	StartsAt time.Time `protobuf:"bytes,3,opt,name=starts_at,json=startsAt,proto3,stdtime" json:"starts_at"`
 	EndsAt   time.Time `protobuf:"bytes,4,opt,name=ends_at,json=endsAt,proto3,stdtime" json:"ends_at"`
 	// The last motification made to the silence.

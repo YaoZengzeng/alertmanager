@@ -62,6 +62,7 @@ type Integration struct {
 // Notify implements the Notifier interface.
 // Notify实现了Notifier接口
 func (i *Integration) Notify(ctx context.Context, alerts ...*types.Alert) (bool, error) {
+	// Integration的Notify直接调用notifer的Notify接口
 	return i.notifier.Notify(ctx, alerts...)
 }
 
@@ -71,6 +72,7 @@ func (i *Integration) Notify(ctx context.Context, alerts ...*types.Alert) (bool,
 func BuildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, logger log.Logger) []Integration {
 	var (
 		integrations []Integration
+		// 将receiver的通知方法进行整合
 		add          = func(name string, i int, n Notifier, nc notifierConfig) {
 			integrations = append(integrations, Integration{
 				notifier: n,
@@ -84,6 +86,7 @@ func BuildReceiverIntegrations(nc *config.Receiver, tmpl *template.Template, log
 	// 遍历各种notifier的配置进行发送
 	for i, c := range nc.WebhookConfigs {
 		n := NewWebhook(c, tmpl, logger)
+		// 如果说webhook的配置，则integration的name为webhook，idx表示其中的第几个webhook配置，n则是根据配置创建的Notifier，c则为配置
 		add("webhook", i, n, c)
 	}
 	for i, c := range nc.EmailConfigs {

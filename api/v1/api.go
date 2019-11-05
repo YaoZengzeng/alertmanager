@@ -543,6 +543,7 @@ func (api *API) setSilence(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if sil.EndsAt.Before(time.Now()) {
+		// end time不能在当前时间之前
 		api.respondError(w, apiError{
 			typ: errorBadData,
 			err: errors.New("end time can't be in the past"),
@@ -622,6 +623,7 @@ func (api *API) listSilences(w http.ResponseWriter, r *http.Request) {
 
 	matchers := []*labels.Matcher{}
 	if filter := r.FormValue("filter"); filter != "" {
+		// 根据filter生成matchers
 		matchers, err = parse.Matchers(filter)
 		if err != nil {
 			api.respondError(w, apiError{
@@ -674,6 +676,7 @@ func (api *API) listSilences(w http.ResponseWriter, r *http.Request) {
 
 	// Initialize silences explicitly to an empty list (instead of nil)
 	// So that it does not get converted to "null" in JSON.
+	// 将silences显式地初始化为empty list（而不是nil），这样在JSON中不会被转化为"null"
 	silences := []*types.Silence{}
 	silences = append(silences, active...)
 	silences = append(silences, pending...)

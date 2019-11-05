@@ -284,6 +284,7 @@ func createStage(rc *config.Receiver, tmpl *template.Template, wait func() time.
 		// 设置Notification Stage
 		s = append(s, NewSetNotifiesStage(notificationLog, recv))
 
+		// 同一个receiver的各种发送方法应该并行运行，所以使用了FanoutStage
 		fs = append(fs, s)
 	}
 	return fs
@@ -308,6 +309,7 @@ func (rs RoutingStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.
 		return ctx, nil, fmt.Errorf("stage for receiver missing")
 	}
 
+	// 再对同一个receiver中的各种发送方法并行处理
 	return s.Exec(ctx, l, alerts...)
 }
 
@@ -320,6 +322,7 @@ func (ms MultiStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Al
 	var err error
 	// 遍历各个Stage用于过滤alerts
 	for _, s := range ms {
+		// 如果没有alerts就直接返回
 		if len(alerts) == 0 {
 			return ctx, nil, nil
 		}
@@ -350,6 +353,7 @@ func (fs FanoutStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.A
 	for _, s := range fs {
 		// 并行地执行多个Stage
 		go func(s Stage) {
+			// 每一个s都是MultiStage
 			if _, _, err := s.Exec(ctx, l, alerts...); err != nil {
 				me.Add(err)
 				lvl := level.Error(l)
@@ -357,6 +361,7 @@ func (fs FanoutStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.A
 					// It is expected for the context to be canceled on
 					// configuration reload or shutdown. In this case, the
 					// message should only be logged at the debug level.
+					// 当配置reload或者关闭的时候context会被取消，在这种情况下，message应该只在debug层面被记录
 					lvl = level.Debug(l)
 				}
 				lvl.Log("msg", "Error on notify", "err", err)
@@ -366,6 +371,7 @@ func (fs FanoutStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.A
 	}
 	wg.Wait()
 
+	// 如果有错误，则返回
 	if me.Len() > 0 {
 		return ctx, alerts, &me
 	}
@@ -646,6 +652,7 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 			return ctx, nil, fmt.Errorf("firing alerts missing")
 		}
 		if len(firing) == 0 {
+			// 如果没有firing的告警，则直接返回所有的alerts
 			return ctx, alerts, nil
 		}
 		for _, a := range alerts {
@@ -660,7 +667,7 @@ func (r RetryStage) Exec(ctx context.Context, l log.Logger, alerts ...*types.Ale
 	var (
 		i    = 0
 		b    = backoff.NewExponentialBackOff()
-		// 根据回推创建一个ticker
+		// 根据回退创建一个ticker
 		tick = backoff.NewTicker(b)
 		iErr error
 	)
